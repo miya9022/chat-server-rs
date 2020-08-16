@@ -4,6 +4,26 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload", rename_all = "camelCase")]
+pub enum HostRoomInput {
+  
+  #[serde(rename = "create-room")]
+  CreateRoom(RoomInput),
+
+  #[serde(rename="remove-room")]
+  DeleteRoom(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomInput {
+  pub host_id: Uuid,
+  pub host_name: String,
+  pub participants: Option<Vec<String>>,
+  pub create_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload", rename_all = "camelCase")]
 pub enum Input {
   
   #[serde(rename = "join")]
@@ -23,6 +43,23 @@ pub struct JoinInput {
 #[serde(rename_all = "camelCase")]
 pub struct PostInput {
   pub body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum RoomOutput {
+
+  #[serde(rename = "error")]
+  Error(RoomOutputError),
+
+  #[serde(rename = "alive")]
+  Alive,
+
+  #[serde(rename = "room-created")]
+  RoomCreated(RoomRemovedOutput),
+
+  #[serde(rename = "room-removed")]
+  RoomRemoved(RoomRemovedOutput),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -53,6 +90,16 @@ pub enum Output {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "code")]
+pub enum RoomOutputError {
+   #[serde(rename = "name-taken")]
+  NameTaken,
+  
+  #[serde(rename = "invalid-name")]
+  InvalidName,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "code")]
 pub enum OutputError {
   
   #[serde(rename = "name-taken")]
@@ -69,14 +116,32 @@ pub enum OutputError {
 }
 
 #[derive(Debug, Clone)]
+pub struct RoomInputParcel {
+  pub room_id: String,
+  pub input: HostRoomInput,
+}
+
+#[derive(Debug, Clone)]
 pub struct InputParcel {
   pub client_id: Uuid,
+  pub room_id: String,
   pub input: Input,
 }
 
 impl InputParcel {
-  pub fn new(client_id: Uuid, input: Input) -> Self {
-    InputParcel { client_id, input }
+  pub fn new(client_id: Uuid, room_id: String, input: Input) -> Self {
+    InputParcel { client_id, room_id, input }
+  }
+}
+
+pub struct RoomOutputParcel {
+  pub room_id: String,
+  pub output: RoomOutput,
+}
+
+impl RoomOutputParcel {
+  pub fn new(room_id: String, output: RoomOutput) -> Self {
+    RoomOutputParcel { room_id, output }
   }
 }
 
@@ -90,6 +155,18 @@ impl OutputParcel {
   pub fn new(client_id: Uuid, output: Output) -> Self {
     OutputParcel { client_id, output }
   }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomCreatedOutput {
+  pub room_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomRemovedOutput {
+  pub room_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

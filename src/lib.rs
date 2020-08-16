@@ -7,3 +7,4 @@ pub mod hub;
 pub mod server;
 pub mod client;
 pub mod error;
+pub mod room_storage;

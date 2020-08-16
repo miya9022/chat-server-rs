@@ -8,14 +8,20 @@ use warp::filters::ws::WebSocket;
 use crate::error::{Error, Result};
 use crate::proto::{InputParcel, OutputParcel};
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 pub struct Client {
   pub id: Uuid,
+  pub room_id: String,
+}
+
+#[derive(Clone, Default)]
+pub struct RoomClient {
+  pub room_id: String,
 }
 
 impl Client {
-  pub fn new() -> Self {
-    Client { id: Uuid::new_v4() }
+  pub fn new(room_id: &str) -> Self {
+    Client { id: Uuid::new_v4(), room_id: String::from(room_id) }
   }
 
   pub fn read_input(
@@ -23,6 +29,8 @@ impl Client {
     stream: SplitStream<WebSocket>
   ) -> impl Stream<Item = Result<InputParcel>> {
     let client_id = self.id;
+    let rid = self.room_id.clone();
+
     stream
       // take only text messages
       .take_while(|message| {
@@ -37,7 +45,7 @@ impl Client {
         Err(err) => Err(Error::System(err.to_string())),
         Ok(message) => {
           let input = serde_json::from_str(message.to_str().unwrap())?;
-          Ok(InputParcel::new(client_id, input))
+          Ok(InputParcel::new(client_id, rid.clone(), input))
         }
       })
   }
