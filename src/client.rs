@@ -9,19 +9,27 @@ use crate::error::{Error, Result};
 use crate::proto::{InputParcel, OutputParcel};
 
 #[derive(Clone, Default)]
-pub struct Client {
-  pub id: Uuid,
-  pub room_id: String,
-}
-
-#[derive(Clone, Default)]
 pub struct RoomClient {
   pub room_id: String,
 }
 
-impl Client {
+impl RoomClient {
   pub fn new(room_id: &str) -> Self {
-    Client { id: Uuid::new_v4(), room_id: String::from(room_id) }
+    RoomClient {
+      room_id: String::from(room_id),
+    }
+  }
+}
+
+#[derive(Clone, Default)]
+pub struct ChatClient {
+  pub id: Uuid,
+  pub room_id: String,
+}
+
+impl ChatClient {
+  pub fn new(room_id: &str) -> Self {
+    ChatClient { id: Uuid::new_v4(), room_id: String::from(room_id) }
   }
 
   pub fn read_input(

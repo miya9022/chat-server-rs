@@ -8,7 +8,7 @@ use tokio::time::Duration;
 use warp::Filter;
 use warp::ws::WebSocket;
 
-use crate::client::Client;
+use crate::client::{ChatClient, RoomClient};
 use crate::room_storage::RoomStorage;
 use crate::hub::{Hub, HubOptions};
 use crate::proto::InputParcel;
@@ -74,7 +74,7 @@ impl Server {
   ) {
     let output_receiver = hub.subscribe();
     let (ws_sink, ws_stream) = web_socket.split();
-    let client = Client::new();
+    let client = ChatClient::new();
 
     info!("Client {} connected", client.id);
 
