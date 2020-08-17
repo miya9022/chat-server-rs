@@ -4,13 +4,19 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload", rename_all = "camelCase")]
-pub enum HostRoomInput {
-  
+pub enum Input {
+
   #[serde(rename = "create-room")]
   CreateRoom(RoomInput),
 
-  #[serde(rename="remove-room")]
+  #[serde(rename = "remove-room")]
   DeleteRoom(String),
+  
+  #[serde(rename = "join-room")]
+  JoinRoom(JoinInput),
+
+  #[serde(rename = "post-message")]
+  PostMessage(PostInput),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -20,17 +26,6 @@ pub struct RoomInput {
   pub host_name: String,
   pub participants: Option<Vec<String>>,
   pub create_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", content = "payload", rename_all = "camelCase")]
-pub enum Input {
-  
-  #[serde(rename = "join")]
-  Join(JoinInput),
-
-  #[serde(rename = "post")]
-  Post(PostInput),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,23 +42,6 @@ pub struct PostInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
-pub enum RoomOutput {
-
-  #[serde(rename = "error")]
-  Error(RoomOutputError),
-
-  #[serde(rename = "alive")]
-  Alive,
-
-  #[serde(rename = "room-created")]
-  RoomCreated(RoomRemovedOutput),
-
-  #[serde(rename = "room-removed")]
-  RoomRemoved(RoomRemovedOutput),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", content = "payload")]
 pub enum Output {
   
   #[serde(rename = "error")]
@@ -71,6 +49,12 @@ pub enum Output {
 
   #[serde(rename = "alive")]
   Alive,
+
+  #[serde(rename = "room-created")]
+  RoomCreated(RoomCreatedOutput),
+
+  #[serde(rename = "room-removed")]
+  RoomRemoved(RoomRemovedOutput),
   
   #[serde(rename = "joined")]
   Joined(JoinedOutput),
@@ -90,35 +74,28 @@ pub enum Output {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "code")]
-pub enum RoomOutputError {
-   #[serde(rename = "name-taken")]
-  NameTaken,
+pub enum OutputError {
+
+  #[serde(rename = "room-notexists")]
+  RoomNotExists,
+
+  #[serde(rename = "name-taken")]
+  RoomNameTaken,
   
   #[serde(rename = "invalid-name")]
-  InvalidName,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "code")]
-pub enum OutputError {
+  InvalidRoomName,
   
   #[serde(rename = "name-taken")]
-  NameTaken,
+  UserNameTaken,
   
   #[serde(rename = "invalid-name")]
-  InvalidName,
+  InvalidUserName,
   
   #[serde(rename = "not-joined")]
-  NotJoined,
+  UserNotJoined,
   
   #[serde(rename = "invalid-message-body")]
   InvalidMessageBody,
-}
-
-#[derive(Debug, Clone)]
-pub struct RoomInputParcel {
-  pub room_id: String,
-  pub input: HostRoomInput,
 }
 
 #[derive(Debug, Clone)]
@@ -134,26 +111,16 @@ impl InputParcel {
   }
 }
 
-pub struct RoomOutputParcel {
-  pub room_id: String,
-  pub output: RoomOutput,
-}
-
-impl RoomOutputParcel {
-  pub fn new(room_id: String, output: RoomOutput) -> Self {
-    RoomOutputParcel { room_id, output }
-  }
-}
-
 #[derive(Debug, Clone)]
 pub struct OutputParcel {
+  pub room_id: String,
   pub client_id: Uuid,
   pub output: Output,
 }
 
 impl OutputParcel {
-  pub fn new(client_id: Uuid, output: Output) -> Self {
-    OutputParcel { client_id, output }
+  pub fn new(room_id: String, client_id: Uuid, output: Output) -> Self {
+    OutputParcel { room_id, client_id, output }
   }
 }
 
@@ -215,6 +182,22 @@ pub struct PostedOutput {
 #[serde(rename_all = "camelCase")]
 pub struct UserPostedOutput {
   pub message: MessageOutput,
+}
+
+impl RoomCreatedOutput {
+  pub fn new(room_id: String) -> Self {
+    RoomCreatedOutput {
+      room_id
+    }
+  }
+}
+
+impl RoomRemovedOutput {
+  pub fn new(room_id: String) -> Self {
+    RoomRemovedOutput {
+      room_id
+    }
+  }
 }
 
 impl UserOutput {

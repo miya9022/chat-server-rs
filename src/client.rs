@@ -9,27 +9,14 @@ use crate::error::{Error, Result};
 use crate::proto::{InputParcel, OutputParcel};
 
 #[derive(Clone, Default)]
-pub struct RoomClient {
-  pub room_id: String,
-}
-
-impl RoomClient {
-  pub fn new(room_id: &str) -> Self {
-    RoomClient {
-      room_id: String::from(room_id),
-    }
-  }
-}
-
-#[derive(Clone, Default)]
-pub struct ChatClient {
+pub struct Client {
   pub id: Uuid,
   pub room_id: String,
 }
 
-impl ChatClient {
-  pub fn new(room_id: &str) -> Self {
-    ChatClient { id: Uuid::new_v4(), room_id: String::from(room_id) }
+impl Client {
+  pub fn new(room_id: String) -> Self {
+    Client { room_id, id: Uuid::new_v4() }
   }
 
   pub fn read_input(
@@ -64,9 +51,19 @@ impl ChatClient {
     E: error::Error,
   {
     let client_id = self.id;
+    let room_id = self.room_id.clone();
     stream
       // skip irrelevent parcels
-      .try_filter(move |output_parcel| future::ready(output_parcel.client_id == client_id))
+      .try_filter(move |output_parcel| {
+        let filtering = 
+          // if output only have room_id
+          (output_parcel.client_id.is_nil() && output_parcel.room_id == room_id) ||
+
+          // if output is message chat
+          (output_parcel.client_id == client_id && output_parcel.room_id == room_id);
+
+        future::ready(filtering)
+      })
       // serialize to JSON
       .map_ok(|output_parcel| {
         let data = serde_json::to_string(&output_parcel.output).unwrap();
