@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 use chrono::Utc;
 use tokio::sync::{ RwLock, broadcast, mpsc::UnboundedReceiver };
+use tokio::time;
 
 use crate::model::{room::Room, user::User};
 use crate::hub::{Hub, HubOptions};
@@ -42,11 +43,30 @@ impl RoomStorage {
     self.output_sender.subscribe()
   }
 
+   async fn tick_alive(&self) {
+    let alive_interval = if let Some(alive_interval) = self.hub_options.unwrap().alive_interval {
+      alive_interval
+    } else {
+      return;
+    };
+
+    loop {
+      time::delay_for(alive_interval).await;
+      self.rooms.read().await.keys().for_each(|room_id| {
+        self.output_sender
+          .send(OutputParcel::new(String::from(room_id), Default::default(), Output::Alive))
+          .unwrap();
+      })
+    }
+  }
+
   pub async fn run(&self, receiver: UnboundedReceiver<InputParcel>) {
+    let ticking_alive = self.tick_alive();
     let processing = receiver.for_each(|input_parcel| self.process(input_parcel));
 
     tokio::select! {
-      _ = processing -> {}
+      _ = ticking_alive => {},
+      _ = processing => {},
     }
   }
 
@@ -56,7 +76,7 @@ impl RoomStorage {
       Input::DeleteRoom(room_id) => self.delete_room(room_id).await,
       _ => match self.get_hub(input_parcel.room_id.as_str()).await {
         Some(hub) => {
-          hub.process(input_parcel);
+          hub.process(input_parcel).await;
         },
         None => self.send_error(input_parcel.room_id.as_str(), OutputError::RoomNotExists)
       }
@@ -88,10 +108,10 @@ impl RoomStorage {
     self.rooms.write().await.insert(room_id.clone(), room.clone());
 
     // create Hub
-    let hub = Hub::new(self.hub_options.unwrap(), &self.output_sender);
+    let hub = Hub::new(self.hub_options.unwrap(), self.output_sender.clone());
     self.hubs.write().await.insert(room_id.clone(), Arc::new(hub));
 
-    // send created log
+    // send created notification
     self.output_sender
       .send(OutputParcel::new(room_id.clone(), Default::default(), Output::RoomCreated(RoomCreatedOutput::new(room_id))))
       .unwrap();
@@ -110,6 +130,7 @@ impl RoomStorage {
     let hub = self.hubs.write().await.remove(room_id.as_str()).unwrap();
     drop(hub);
 
+    // send removed notification
     self.output_sender
       .send(OutputParcel::new(room_id.clone(), Default::default(), Output::RoomRemoved(RoomRemovedOutput::new(room_id))))
       .unwrap();

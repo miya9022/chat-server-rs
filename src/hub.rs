@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use futures::StreamExt;
 use uuid::Uuid;
 use regex::Regex;
@@ -29,11 +30,11 @@ pub struct Hub {
 }
 
 impl Hub {
-  pub fn new<'a>(options: HubOptions, output_sender: &'a broadcast::Sender<OutputParcel>) -> Self {
+  pub fn new<'a>(options: HubOptions, output_sender: broadcast::Sender<OutputParcel>) -> Self {
     // let (output_sender, _) = broadcast::channel(OUTPUT_CHANNEL_SIZE);
     Hub {
       alive_interval: options.alive_interval,
-      output_sender: *output_sender,
+      output_sender,
       users: Default::default(),
       feed: Default::default(),
     }
@@ -141,6 +142,8 @@ impl Hub {
       self.send_error(room_id, client_id, OutputError::InvalidUserName);
       return;
     }
+
+    // TODO: check user exists inside participants
 
     let user = User::new(client_id, user_name);
     self.users.write().await.insert(client_id, user.clone());
