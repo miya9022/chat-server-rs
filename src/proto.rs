@@ -75,7 +75,7 @@ pub enum Output {
 #[serde(tag = "code")]
 pub enum OutputError {
 
-  #[serde(rename = "room-notexists")]
+  #[serde(rename = "room-not-exists")]
   RoomNotExists,
 
   #[serde(rename = "room-name-taken")]
