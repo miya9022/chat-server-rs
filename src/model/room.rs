@@ -8,15 +8,24 @@ pub struct Room {
   pub host_info: User,
   pub participants: Option<Vec<User>>,
   pub create_at: DateTime<Utc>,
+  pub delete_key: String,
 }
 
 impl Room {
-  pub fn new(room_id: String, host_id: Uuid, host_name: String, participants: Option<Vec<User>>, create_at: DateTime<Utc>) -> Self {
+  pub fn new(
+    room_id: String, 
+    host_id: Uuid, 
+    host_name: String, 
+    participants: Option<Vec<User>>, 
+    create_at: DateTime<Utc>,
+    delete_key: String,
+  ) -> Self {
     Room {
       room_id,
       host_info: User::new(host_id, host_name.as_str()),
       participants,
       create_at,
+      delete_key
     }
   }
 }

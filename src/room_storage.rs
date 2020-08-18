@@ -1,4 +1,4 @@
-use futures::StreamExt;
+use futures::{stream, StreamExt};
 use std::sync::Arc;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -8,13 +8,13 @@ use tokio::time;
 
 use crate::model::{room::Room, user::User};
 use crate::hub::{Hub, HubOptions};
-use crate::proto::{RoomInput, Input, InputParcel, Output, OutputParcel, OutputError, RoomCreatedOutput, RoomRemovedOutput};
+use crate::proto::{RoomInput, JoinInput, Input, InputParcel, Output, OutputParcel, OutputError, RoomCreatedOutput, RoomRemovedOutput};
 
 const OUTPUT_CHANNEL_SIZE: usize = 65536;
 
 pub struct RoomStorage {
   output_sender: broadcast::Sender<OutputParcel>,
-  rooms: RwLock<HashMap<String, Room>>,
+  rooms: RwLock<HashMap<String, Arc<Room>>>,
   hubs: RwLock<HashMap<String, Arc<Hub>>>,
   hub_options: Option<HubOptions>,
 }
@@ -27,6 +27,15 @@ impl RoomStorage {
       rooms: Default::default(),
       hubs: Default::default(),
       hub_options,
+    }
+  }
+
+  async fn get_room(&self, room_id: &str) -> Option<Arc<Room>> {
+    let map = self.rooms.read().await;
+    if let Some(room) = map.get(room_id) {
+      Some(Arc::clone(room))
+    } else {
+      None
     }
   }
 
@@ -95,20 +104,37 @@ impl RoomStorage {
 
     // setup and serve Room instance 
     let users = input.participants.as_ref()
-      .filter(|parts| parts.len() > 0)
+      .filter(|parts| !parts.is_empty())
       .map(|parts| {
         (*parts).iter()
-          .map(|part| {
-            User::new(Uuid::new_v4(), part)
-          })
+          .map(|part| User::new(Uuid::new_v4(), part))
           .collect()
       });
 
-    let room = Room::new(room_id.clone(), input.host_id, input.host_name, users, Utc::now());
-    self.rooms.write().await.insert(room_id.clone(), room.clone());
+    let room = Room::new(room_id.clone(), input.host_id, input.host_name, users.clone(), Utc::now(), Default::default());
+    self.rooms.write().await.insert(room_id.clone(), Arc::new(room.clone()));
 
     // create Hub
     let hub = Hub::new(self.hub_options.unwrap(), self.output_sender.clone());
+
+    // invite participants
+    let inputs = users.as_ref()
+      .filter(|us| !us.is_empty())
+      .map(|us| {
+        (*us).iter()
+          .map(|user| {
+            InputParcel::new(user.id, room_id.clone(), Input::JoinRoom(JoinInput{ name: user.name.clone() }))
+          })
+          .collect::<Vec<InputParcel>>()
+      });
+
+    if let Some(parcels) = inputs.as_ref().filter(|ins| !ins.is_empty()).take() {
+      for input in (*parcels).clone() {
+        hub.process(input).await;
+      }
+    }
+
+    // serve hub instance
     self.hubs.write().await.insert(room_id.clone(), Arc::new(hub));
 
     // send created notification
@@ -119,13 +145,15 @@ impl RoomStorage {
 
   async fn delete_room(&self, room_id: String) {
 
-    // if room_id not exists send room not exists log
-    if !self.rooms.read().await.contains_key(room_id.as_str()) {
+    if let Some(room) = self.get_room(room_id.as_str()).await {
+      // TODO: check delete room permission through delete key
+
+    } else {
       self.send_error(room_id.as_str(), OutputError::RoomNotExists);
       return;
     }
 
-    // if room_id exists, delete room instance
+    // delete room instance
     self.rooms.write().await.remove(room_id.as_str()).unwrap();
     let hub = self.hubs.write().await.remove(room_id.as_str()).unwrap();
     drop(hub);

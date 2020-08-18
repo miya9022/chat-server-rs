@@ -25,7 +25,6 @@ pub struct RoomInput {
   pub host_id: Uuid,
   pub host_name: String,
   pub participants: Option<Vec<String>>,
-  pub create_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,19 +78,19 @@ pub enum OutputError {
   #[serde(rename = "room-notexists")]
   RoomNotExists,
 
-  #[serde(rename = "name-taken")]
+  #[serde(rename = "room-name-taken")]
   RoomNameTaken,
   
-  #[serde(rename = "invalid-name")]
+  #[serde(rename = "invalid-room-name")]
   InvalidRoomName,
   
-  #[serde(rename = "name-taken")]
+  #[serde(rename = "user-name-taken")]
   UserNameTaken,
   
-  #[serde(rename = "invalid-name")]
+  #[serde(rename = "invalid-user-name")]
   InvalidUserName,
   
-  #[serde(rename = "not-joined")]
+  #[serde(rename = "user-not-joined")]
   UserNotJoined,
   
   #[serde(rename = "invalid-message-body")]
@@ -163,12 +162,14 @@ pub struct JoinedOutput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserJoinedOutput {
+  pub room_id: String,
   pub user: UserOutput,
 }
 
-#[derive(Debug, Clone, PartialEq, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserLeftOutput {
+  pub room_id: String,
   pub user_id: Uuid,
 }
 
@@ -231,14 +232,14 @@ impl JoinedOutput {
 }
 
 impl UserJoinedOutput {
-  pub fn new(user: UserOutput) -> Self {
-    UserJoinedOutput { user }
+  pub fn new(room_id: String, user: UserOutput) -> Self {
+    UserJoinedOutput { room_id, user }
   }
 }
 
 impl UserLeftOutput {
-  pub fn new(user_id: Uuid) -> Self {
-    UserLeftOutput { user_id }
+  pub fn new(room_id: String, user_id: Uuid) -> Self {
+    UserLeftOutput { room_id, user_id }
   }
 }
 

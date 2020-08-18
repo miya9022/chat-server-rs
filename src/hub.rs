@@ -87,7 +87,7 @@ impl Hub {
 
   pub async fn on_disconnect(&self, room_id: &str, client_id: Uuid) {
     if self.users.write().await.remove(&client_id).is_some() {
-      self.send_ignored(room_id, client_id, Output::UserLeft(UserLeftOutput::new(client_id))).await
+      self.send_ignored(room_id, client_id, Output::UserLeft(UserLeftOutput::new(String::from(room_id), client_id))).await
     }
   }
 
@@ -145,6 +145,8 @@ impl Hub {
 
     // TODO: check user exists inside participants
 
+
+    // Serve user information
     let user = User::new(client_id, user_name);
     self.users.write().await.insert(client_id, user.clone());
 
@@ -190,7 +192,7 @@ impl Hub {
     self.send_ignored(
       room_id,
       client_id,
-      Output::UserJoined(UserJoinedOutput::new(user_output))
+      Output::UserJoined(UserJoinedOutput::new(String::from(room_id), user_output))
     )
     .await;
   }
