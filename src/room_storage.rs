@@ -129,7 +129,7 @@ impl RoomStorage {
       });
 
     if let Some(parcels) = inputs.as_ref().filter(|ins| !ins.is_empty()).take() {
-      for input in (*parcels).clone() {
+      for input in (*parcels).to_owned() {
         hub.process(input).await;
       }
     }
