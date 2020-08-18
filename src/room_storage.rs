@@ -111,11 +111,15 @@ impl RoomStorage {
           .collect()
       });
 
-    let room = Room::new(room_id.clone(), input.host_id, input.host_name, users.clone(), Utc::now(), Default::default());
+    let room = Room::new(room_id.clone(), input.host_id, input.host_name.clone(), users.clone(), Utc::now(), Default::default());
     self.rooms.write().await.insert(room_id.clone(), Arc::new(room.clone()));
 
     // create Hub
     let hub = Hub::new(self.hub_options.unwrap(), self.output_sender.clone());
+
+    // invite host
+    let host_input = InputParcel::new(input.host_id, room_id.clone(), Input::JoinRoom(JoinInput{ name: input.host_name }));
+    hub.process(host_input).await;
 
     // invite participants
     let inputs = users.as_ref()
