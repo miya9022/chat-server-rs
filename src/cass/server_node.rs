@@ -1,6 +1,5 @@
 use cassandra_cpp::*;
 use crate::cass::schema_loader::SchemaLoader;
-use futures::future::err;
 
 #[derive(Default)]
 pub struct ServerNode {
@@ -26,10 +25,10 @@ impl ServerNode {
         match self.cluster_instance.connect_async().await {
             Ok(ref mut session) => {
                 let schema_loader = SchemaLoader::new_with_session(session);
-                ServerNode::load_schema_from_file(&schema_loader, "keyspace.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "room.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "user.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "message.cql").await;
+                ServerNode::load_schema_from_file(&schema_loader, "cql/keyspace.cql").await;
+                ServerNode::load_schema_from_file(&schema_loader, "cql/room.cql").await;
+                ServerNode::load_schema_from_file(&schema_loader, "cql/user.cql").await;
+                ServerNode::load_schema_from_file(&schema_loader, "cql/message.cql").await;
                 Ok(())
             },
             _ => panic!()

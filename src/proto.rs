@@ -10,7 +10,7 @@ pub enum Input {
   CreateRoom(RoomInput),
 
   #[serde(rename = "remove-room")]
-  DeleteRoom(String),
+  DeleteRoom(RemoveRoomInput),
   
   #[serde(rename = "join-room")]
   JoinRoom(JoinInput),
@@ -25,6 +25,13 @@ pub struct RoomInput {
   pub host_id: Uuid,
   pub host_name: String,
   pub participants: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveRoomInput {
+  pub room_id: String,
+  pub delete_key: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,6 +90,9 @@ pub enum OutputError {
   
   #[serde(rename = "invalid-room-name")]
   InvalidRoomName,
+
+  #[serde(rename = "remove-room-failed")]
+  RemoveRoomFailed,
   
   #[serde(rename = "user-name-taken")]
   UserNameTaken,

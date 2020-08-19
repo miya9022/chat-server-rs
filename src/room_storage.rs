@@ -8,7 +8,7 @@ use tokio::time;
 
 use crate::model::{room::Room, user::User};
 use crate::hub::{Hub, HubOptions};
-use crate::proto::{RoomInput, JoinInput, Input, InputParcel, Output, OutputParcel, OutputError, RoomCreatedOutput, RoomRemovedOutput};
+use crate::proto::{RoomInput, JoinInput, Input, InputParcel, Output, OutputParcel, OutputError, RoomCreatedOutput, RoomRemovedOutput, RemoveRoomInput};
 
 const OUTPUT_CHANNEL_SIZE: usize = 65536;
 
@@ -82,7 +82,7 @@ impl RoomStorage {
   async fn process(&self, input_parcel: InputParcel) {
     match input_parcel.input {
       Input::CreateRoom(room_input) => self.create_room(input_parcel.room_id, room_input).await,
-      Input::DeleteRoom(room_id) => self.delete_room(room_id).await,
+      Input::DeleteRoom(remove_room_input) => self.delete_room(remove_room_input).await,
       _ => match self.get_hub(input_parcel.room_id.as_str()).await {
         Some(hub) => {
           hub.process(input_parcel).await;
@@ -147,11 +147,14 @@ impl RoomStorage {
       .unwrap();
   }
 
-  async fn delete_room(&self, room_id: String) {
+  async fn delete_room(&self, remove_room_input: RemoveRoomInput) {
+    let room_id = remove_room_input.room_id;
+    let delete_key = remove_room_input.delete_key;
 
     if let Some(room) = self.get_room(room_id.as_str()).await {
-      // TODO: check delete room permission through delete key
-
+      if room.delete_key != delete_key {
+        self.send_error(room_id.as_str(), OutputError::RemoveRoomFailed);
+      }
     } else {
       self.send_error(room_id.as_str(), OutputError::RoomNotExists);
       return;
