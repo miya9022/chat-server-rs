@@ -1,5 +1,6 @@
 use cassandra_cpp::*;
 use crate::cass::schema_loader::SchemaLoader;
+use futures::future::err;
 
 #[derive(Default)]
 pub struct ServerNode {
@@ -18,13 +19,17 @@ impl ServerNode {
         self.cluster_instance.set_contact_points("127.0.0.1").unwrap();
         self.cluster_instance.set_load_balance_round_robin();
 
-        match self.cluster_instance.connect() {
+        if let Err(error) = self.cluster_instance.set_protocol_version(4) {
+            println!("{:?}", error);
+        }
+
+        match self.cluster_instance.connect_async().await {
             Ok(ref mut session) => {
                 let schema_loader = SchemaLoader::new_with_session(session);
-                ServerNode::load_schema_from_file(&schema_loader, "/keyspace.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "/room.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "/user.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "/message.cql").await;
+                ServerNode::load_schema_from_file(&schema_loader, "keyspace.cql").await;
+                ServerNode::load_schema_from_file(&schema_loader, "room.cql").await;
+                ServerNode::load_schema_from_file(&schema_loader, "user.cql").await;
+                ServerNode::load_schema_from_file(&schema_loader, "message.cql").await;
                 Ok(())
             },
             _ => panic!()
@@ -36,8 +41,8 @@ impl ServerNode {
             Ok(result) => {
                 println!("{}", result.to_string());
             },
-            _ => {
-                println!("Error occur");
+            Err(error) => {
+                panic!("Error occur: {:?}", error);
             }
         }
     }
