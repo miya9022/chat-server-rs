@@ -5,4 +5,4 @@ CREATE TABLE IF NOT EXISTS chat_app.room (
     participants set<varchar>,
     create_at bigint,
     delete_key varchar,
-)
+);
