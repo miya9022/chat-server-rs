@@ -50,12 +50,14 @@ impl RoomRepository {
     const INSERT_QUERY: &'static str = "INSERT INTO chat_app.room (room_id, host_id, host_name, participants, create_at, delete_key) \
     VALUES(?, ?, ?, ?, ?, ?)";
 
-    const UPDATE_PARTICIPANTS_QUERY: &'static str = "UPDATE chat_app.room SET participants = ?";
+    const UPDATE_PARTICIPANTS_QUERY: &'static str = "UPDATE chat_app.room SET participants = ? WHERE room_id = ?";
 
     const SELECT_ALL_QUERY: &'static str = "SELECT room_id, host_id, host_name, participants, create_at, delete_key FROM chat_app.room";
 
     const SELECT_ONE_QUERY: &'static str = "SELECT room_id, host_id, host_name, participants, create_at, delete_key FROM chat_app.room \
     WHERE room_id = ?";
+
+    const DELETE_QUERY: &'static str = "DELETE FROM chat_app.room WHERE room_id = ?";
 
     const SEPARATOR_CHARS: &'static str = "*&&*";
 
@@ -92,13 +94,14 @@ impl RoomRepository {
         }
     }
 
-    pub async fn update_participant_in_room(&self, participants: Vec<User>) -> Result<()> {
+    pub async fn update_participant_in_room(&self, room_id: &str, participants: Vec<User>) -> Result<()> {
         let mut statement = stmt!(Self::UPDATE_PARTICIPANTS_QUERY);
         let mut set = Set::new_from_data_type(DataType::new(ValueType::VARCHAR), participants.len());
         participants.iter().for_each(|item| {
             set.append_string(&(item.id.to_string() + Self::SEPARATOR_CHARS + item.name.as_str())).ok();
         });
         statement.bind_set(0, set).ok();
+        statement.bind_string(1, room_id).ok();
 
         let result = self.retrieve_session().execute(&statement).await;
         match result {
@@ -148,6 +151,19 @@ impl RoomRepository {
         match result.first_row() {
             None => None,
             Some(row) => Self::bind_to_room(row)
+        }
+    }
+
+    pub async fn delete_room(&self, room_id: &str) -> Result<()> {
+        let mut statement = stmt!(Self::DELETE_QUERY);
+        statement.bind_string(0, room_id).ok();
+        let result = Result::ok(self.retrieve_session().execute(&statement).await);
+
+        match result {
+            Some(_) => Ok(()),
+            None => {
+                Err(Error::from_kind(ErrorKind::Msg("Delete room failed".to_string())))
+            }
         }
     }
 
