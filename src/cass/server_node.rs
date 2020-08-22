@@ -1,16 +1,27 @@
 use cassandra_cpp::*;
 use crate::cass::schema_loader::SchemaLoader;
+use crate::domain::repository::{RepositoryFactory, RepoKind};
+use std::sync::Arc;
+use std::cell::{RefCell, Ref};
+use std::borrow::{BorrowMut, Borrow};
+use tokio::sync::{Mutex, MutexGuard};
 
 #[derive(Default)]
 pub struct ServerNode {
     cluster_instance: Cluster,
+    repo_factory: Arc<Mutex<RepositoryFactory>>,
 }
 
 impl ServerNode {
 
     pub fn new() -> Self {
         ServerNode {
-            cluster_instance: Cluster::default()
+            cluster_instance: Cluster::default(),
+            repo_factory: Arc::new(
+                Mutex::new(
+                    RepositoryFactory::new()
+                )
+            ),
         }
     }
 
@@ -29,6 +40,11 @@ impl ServerNode {
                 ServerNode::load_schema_from_file(&schema_loader, "cql/room.cql").await;
                 ServerNode::load_schema_from_file(&schema_loader, "cql/user.cql").await;
                 ServerNode::load_schema_from_file(&schema_loader, "cql/message.cql").await;
+
+                self.repo_factory.lock().await.add_repository(session, RepoKind::ROOM);
+                self.repo_factory.lock().await.add_repository(session, RepoKind::USER);
+                self.repo_factory.lock().await.add_repository(session, RepoKind::MESSAGE);
+
                 Ok(())
             },
             _ => panic!()
@@ -44,6 +60,10 @@ impl ServerNode {
                 panic!("Error occur: {:?}", error);
             }
         }
+    }
+
+    pub async fn get_repo_factory(&self) -> MutexGuard<'_, RepositoryFactory> {
+        self.repo_factory.lock().await
     }
 }
 

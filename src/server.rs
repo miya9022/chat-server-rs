@@ -10,13 +10,12 @@ use warp::ws::WebSocket;
 
 use crate::client::Client;
 use crate::room_storage::RoomStorage;
-use crate::hub::{Hub, HubOptions};
+use crate::hub::HubOptions;
 use crate::proto::InputParcel;
 
 pub struct Server {
   port: u16,
   room_storage: Arc<RoomStorage>,
-  // hub: Arc<Hub>,
 }
 
 impl Server {
@@ -28,9 +27,6 @@ impl Server {
           alive_interval: Some(Duration::from_secs(5)),
         })
       )),
-      // hub: Arc::new(Hub::new(HubOptions {
-      //   alive_interval: Some(Duration::from_secs(5)),
-      // })),
     }
   }
 

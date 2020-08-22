@@ -5,27 +5,30 @@ use crate::model::user::User;
 use uuid::Uuid;
 use std::str::FromStr;
 use chrono::{NaiveDateTime, DateTime, Utc};
+use std::collections::HashMap;
 
-pub trait Repository {
-
-    fn retrieve_session(&self) -> &Session;
-}
-
-pub struct RepositoryFactory {}
+#[derive(Default)]
+pub struct RepositoryFactory(HashMap<String, Box<dyn Repository>>);
 
 impl RepositoryFactory {
-    pub fn new_repository(session: Session, kind: RepoKind) -> Box<dyn Repository>{
-        match kind {
-            RepoKind::ROOM => Box::new(RoomRepository {
-                session: Arc::new(session)
-            }),
-            RepoKind::USER => Box::new(UserRepository {
-                session: Arc::new(session)
-            }),
-            RepoKind::MESSAGE => Box::new(MessageRepository {
-                session: Arc::new(session)
-            }),
-        }
+
+    pub fn new() -> Self {
+        RepositoryFactory(HashMap::<String, Box<dyn Repository>>::new())
+    }
+
+    pub fn add_repository(&mut self, session: &mut Session, kind: RepoKind) {
+        let (key, repo): (&str, Box<dyn Repository>) = match kind {
+            RepoKind::ROOM => ("ROOM", Box::new(RoomRepository {
+                session: unsafe { Arc::from_raw(session) }
+            })),
+            RepoKind::USER => ("USER", Box::new(UserRepository {
+                session: unsafe { Arc::from_raw(session) }
+            })),
+            RepoKind::MESSAGE => ("MESSAGE", Box::new(MessageRepository {
+                session: unsafe { Arc::from_raw(session) }
+            })),
+        };
+        self.0.insert(key.to_string(), repo);
     }
 }
 
@@ -33,6 +36,11 @@ pub enum RepoKind {
     ROOM,
     USER,
     MESSAGE,
+}
+
+pub trait Repository {
+
+    fn retrieve_session(&self) -> &Session;
 }
 
 pub struct RoomRepository {

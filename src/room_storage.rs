@@ -17,6 +17,7 @@ pub struct RoomStorage {
   rooms: RwLock<HashMap<String, Arc<Room>>>,
   hubs: RwLock<HashMap<String, Arc<Hub>>>,
   hub_options: Option<HubOptions>,
+
 }
 
 impl RoomStorage {
