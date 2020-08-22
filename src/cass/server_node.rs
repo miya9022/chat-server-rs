@@ -1,7 +1,6 @@
 use cassandra_cpp::*;
 use crate::cass::schema_loader::SchemaLoader;
 use crate::domain::repository::{RepositoryFactory, RepoKind};
-use std::sync::Arc;
 use std::cell::{RefCell, Ref};
 use std::borrow::{BorrowMut, Borrow};
 use tokio::sync::{Mutex, MutexGuard};
@@ -9,7 +8,6 @@ use tokio::sync::{Mutex, MutexGuard};
 #[derive(Default)]
 pub struct ServerNode {
     cluster_instance: Cluster,
-    repo_factory: Arc<Mutex<RepositoryFactory>>,
 }
 
 impl ServerNode {
@@ -17,23 +15,11 @@ impl ServerNode {
     pub fn new() -> Self {
         ServerNode {
             cluster_instance: Cluster::default(),
-            repo_factory: Arc::new(
-                Mutex::new(
-                    RepositoryFactory::new()
-                )
-            ),
         }
     }
 
     pub async fn init(&mut self) -> Result<()> {
-        self.cluster_instance.set_contact_points("127.0.0.1").unwrap();
-        self.cluster_instance.set_load_balance_round_robin();
-
-        if let Err(error) = self.cluster_instance.set_protocol_version(4) {
-            println!("{:?}", error);
-        }
-
-        match self.cluster_instance.connect_async().await {
+        match self.init_session().await {
             Ok(ref mut session) => {
                 let schema_loader = SchemaLoader::new_with_session(session);
                 ServerNode::load_schema_from_file(&schema_loader, "cql/keyspace.cql").await;
@@ -41,14 +27,21 @@ impl ServerNode {
                 ServerNode::load_schema_from_file(&schema_loader, "cql/user.cql").await;
                 ServerNode::load_schema_from_file(&schema_loader, "cql/message.cql").await;
 
-                self.repo_factory.lock().await.add_repository(session, RepoKind::ROOM);
-                self.repo_factory.lock().await.add_repository(session, RepoKind::USER);
-                self.repo_factory.lock().await.add_repository(session, RepoKind::MESSAGE);
-
                 Ok(())
             },
             _ => panic!()
         }
+    }
+    
+    pub async fn init_session(&mut self) -> Result<Session> {
+        self.cluster_instance.set_contact_points("127.0.0.1").unwrap();
+        self.cluster_instance.set_load_balance_round_robin();
+        
+        if let Err(error) = self.cluster_instance.set_protocol_version(4) {
+            println!("{:?}", error);
+        }
+        
+        self.cluster_instance.connect_async().await
     }
 
     async fn load_schema_from_file(schema_loader: &SchemaLoader, file_path: &str) {
@@ -60,10 +53,6 @@ impl ServerNode {
                 panic!("Error occur: {:?}", error);
             }
         }
-    }
-
-    pub async fn get_repo_factory(&self) -> MutexGuard<'_, RepositoryFactory> {
-        self.repo_factory.lock().await
     }
 }
 

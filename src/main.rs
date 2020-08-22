@@ -1,10 +1,22 @@
 use chat_server::server::Server;
 use chat_server::cass::server_node::ServerNode;
+use chat_server::domain::repository::{RepositoryFactory, RepoKind};
 
 #[tokio::main]
 async fn main() {
   env_logger::init();
-  let node = init_cassandra_cluster().await.unwrap();
+  let mut node = init_cassandra_cluster().await.unwrap();
+  let mut repo_factory = RepositoryFactory::new();
+  match node.init_session().await {
+    Ok(ref mut session) => {
+      repo_factory.add_repository(session, RepoKind::ROOM);
+      repo_factory.add_repository(session, RepoKind::USER);
+      repo_factory.add_repository(session, RepoKind::MESSAGE);
+    },
+    Err(error) => {
+      println!("{:?}", error);
+    }
+  };
 
   let server = Server::new(8080);
   server.run().await;
