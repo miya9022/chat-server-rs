@@ -10,6 +10,7 @@ use chrono::Utc;
 
 use crate::proto::*;
 use crate::model::{user::User, feed::Feed, message::Message};
+use crate::domain::repository::{UserRepository, MessageRepository};
 
 const OUTPUT_CHANNEL_SIZE: usize = 16;
 const MAX_MESSAGE_BODY_LENGTH: usize = 256;
@@ -27,16 +28,22 @@ pub struct Hub {
   output_sender: broadcast::Sender<OutputParcel>,
   users: RwLock<HashMap<Uuid, User>>,
   feed: RwLock<Feed>,
+
+  user_repo: Arc<UserRepository>,
+  msg_repo: Arc<MessageRepository>,
 }
 
 impl Hub {
-  pub fn new<'a>(options: HubOptions, output_sender: broadcast::Sender<OutputParcel>) -> Self {
+  pub fn new<'a>(options: HubOptions, output_sender: broadcast::Sender<OutputParcel>,
+                 user_repo: Arc<UserRepository>, msg_repo: Arc<MessageRepository>) -> Self {
     // let (output_sender, _) = broadcast::channel(OUTPUT_CHANNEL_SIZE);
     Hub {
       alive_interval: options.alive_interval,
       output_sender,
       users: Default::default(),
       feed: Default::default(),
+      user_repo,
+      msg_repo,
     }
   }
 
@@ -143,9 +150,6 @@ impl Hub {
       return;
     }
 
-    // TODO: check user exists inside participants
-
-
     // Serve user information
     let user = User::new(client_id, user_name);
     self.users.write().await.insert(client_id, user.clone());
@@ -195,6 +199,9 @@ impl Hub {
       Output::UserJoined(UserJoinedOutput::new(String::from(room_id), user_output))
     )
     .await;
+
+    // serve user information
+    self.user_repo.create_user(user).await;
   }
 
   async fn process_post(&self, room_id: &str, client_id: Uuid, input: PostInput) {
@@ -227,5 +234,8 @@ impl Hub {
     // notify everyone about new message
     self.send_ignored(room_id, client_id, Output::UserPosted(UserPostedOutput::new(message_output)))
     .await;
+
+    // serve message
+    self.msg_repo.add_new_message(room_id, message).await;
   }
 }

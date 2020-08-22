@@ -1,41 +1,42 @@
+use std::any::Any;
+use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use cassandra_cpp::*;
+use chrono::{NaiveDateTime, DateTime, Utc};
+use uuid::Uuid;
+
 use crate::model::room::Room;
 use crate::model::user::User;
-use uuid::Uuid;
-use std::str::FromStr;
-use chrono::{NaiveDateTime, DateTime, Utc};
-use std::collections::HashMap;
-use std::rc::Rc;
 use crate::model::message::Message;
 
 #[derive(Default)]
-pub struct RepositoryFactory(HashMap<String, Rc<dyn Repository>>);
+pub struct RepositoryFactory(HashMap<String, Arc<dyn Any>>);
 
 impl RepositoryFactory {
 
     pub fn new() -> Self {
-        RepositoryFactory(HashMap::<String, Rc<dyn Repository>>::new())
+        RepositoryFactory(HashMap::<String, Arc<dyn Any>>::new())
     }
 
     pub fn add_repository(&mut self, session: &mut Session, kind: RepoKind) {
-        let (key, repo): (&str, Rc<dyn Repository>) = match kind {
-            RepoKind::ROOM => ("ROOM", Rc::new(RoomRepository {
+        let (key, repo): (&str, Arc<dyn Any>) = match kind {
+            RepoKind::ROOM => ("ROOM", Arc::new(RoomRepository {
                 session: unsafe { Arc::from_raw(session) }
             })),
-            RepoKind::USER => ("USER", Rc::new(UserRepository {
+            RepoKind::USER => ("USER", Arc::new(UserRepository {
                 session: unsafe { Arc::from_raw(session) }
             })),
-            RepoKind::MESSAGE => ("MESSAGE", Rc::new(MessageRepository {
+            RepoKind::MESSAGE => ("MESSAGE", Arc::new(MessageRepository {
                 session: unsafe { Arc::from_raw(session) }
             })),
         };
         self.0.insert(key.to_string(), repo);
     }
 
-    pub fn get_repository(&self, repo_name: &str) -> Rc<dyn Repository> {
+    pub fn get_repository(&self, repo_name: &str) -> Arc<dyn Any> {
         match self.0.get(repo_name) {
-            Some(repo) => Rc::clone(repo),
+            Some(repo) => Arc::clone(repo),
             None => panic!("Not supported")
         }
     }

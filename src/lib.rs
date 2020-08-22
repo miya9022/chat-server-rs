@@ -11,3 +11,5 @@ pub mod room_storage;
 
 pub mod cass;
 pub mod domain;
+
+pub mod utils;

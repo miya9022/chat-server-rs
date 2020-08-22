@@ -12,6 +12,7 @@ use crate::client::Client;
 use crate::room_storage::RoomStorage;
 use crate::hub::HubOptions;
 use crate::proto::InputParcel;
+use crate::domain::repository::RepositoryFactory;
 
 pub struct Server {
   port: u16,
@@ -19,13 +20,14 @@ pub struct Server {
 }
 
 impl Server {
-  pub fn new(port: u16) -> Self {
+  pub fn new(port: u16, repo_fact: RepositoryFactory) -> Self {
     Server {
       port,
       room_storage: Arc::new(RoomStorage::new(
         Some(HubOptions {
           alive_interval: Some(Duration::from_secs(5)),
-        })
+        }),
+        repo_fact
       )),
     }
   }

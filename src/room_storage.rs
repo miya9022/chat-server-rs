@@ -1,6 +1,6 @@
-use futures::{stream, StreamExt};
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
+use futures::StreamExt;
 use uuid::Uuid;
 use chrono::Utc;
 use tokio::sync::{ RwLock, broadcast, mpsc::UnboundedReceiver };
@@ -8,7 +8,9 @@ use tokio::time;
 
 use crate::model::{room::Room, user::User};
 use crate::hub::{Hub, HubOptions};
-use crate::proto::{RoomInput, JoinInput, Input, InputParcel, Output, OutputParcel, OutputError, RoomCreatedOutput, RoomRemovedOutput, RemoveRoomInput};
+use crate::proto::*;
+use crate::domain::repository::{RoomRepository, RepositoryFactory, UserRepository, MessageRepository};
+use crate::utils::AppUtils;
 
 const OUTPUT_CHANNEL_SIZE: usize = 65536;
 
@@ -18,16 +20,38 @@ pub struct RoomStorage {
   hubs: RwLock<HashMap<String, Arc<Hub>>>,
   hub_options: Option<HubOptions>,
 
+  room_repository: Arc<RoomRepository>,
+  user_repository: Arc<UserRepository>,
+  message_repository: Arc<MessageRepository>
 }
 
 impl RoomStorage {
-  pub fn new(hub_options: Option<HubOptions>) -> Self {
+  pub fn new(hub_options: Option<HubOptions>, repo_fact: RepositoryFactory) -> Self {
     let (output_sender, _) = broadcast::channel(OUTPUT_CHANNEL_SIZE);
+
+    let room_repository = match AppUtils::downcast_arc::<RoomRepository>(repo_fact.get_repository("ROOM")) {
+      Ok(repo) => repo,
+      Err(_) => panic!("can't find repository")
+    };
+
+    let user_repository = match AppUtils::downcast_arc::<UserRepository>(repo_fact.get_repository("USER")) {
+      Ok(repo) => repo,
+      Err(_) => panic!("can't find repository")
+    };
+
+    let message_repository = match AppUtils::downcast_arc::<MessageRepository>(repo_fact.get_repository("MESSAGE"))  {
+      Ok(repo) => repo,
+      Err(_) => panic!("can't find repository")
+    };
+
     RoomStorage {
       output_sender,
       rooms: Default::default(),
       hubs: Default::default(),
       hub_options,
+      room_repository,
+      user_repository,
+      message_repository,
     }
   }
 
@@ -35,8 +59,16 @@ impl RoomStorage {
     let map = self.rooms.read().await;
     if let Some(room) = map.get(room_id) {
       Some(Arc::clone(room))
-    } else {
-      None
+    }
+    else {
+      match self.room_repository.load_one_room(room_id).await {
+        None => None,
+        Some(room) => {
+          let room = Arc::new(room);
+          self.rooms.write().await.insert(room_id.to_string(), room.clone());
+          Some(room)
+        }
+      }
     }
   }
 
@@ -116,7 +148,8 @@ impl RoomStorage {
     self.rooms.write().await.insert(room_id.clone(), Arc::new(room.clone()));
 
     // create Hub
-    let hub = Hub::new(self.hub_options.unwrap(), self.output_sender.clone());
+    let hub = Hub::new(self.hub_options.unwrap(), self.output_sender.clone(),
+                       Arc::clone(&self.user_repository), Arc::clone(&self.message_repository));
 
     // invite host
     let host_input = InputParcel::new(input.host_id, room_id.clone(), Input::JoinRoom(JoinInput{ name: input.host_name }));
@@ -146,6 +179,9 @@ impl RoomStorage {
     self.output_sender
       .send(OutputParcel::new(room_id.clone(), Default::default(), Output::RoomCreated(RoomCreatedOutput::new(room_id))))
       .unwrap();
+
+    // serve room to database
+    self.room_repository.create_room(room).await;
   }
 
   async fn delete_room(&self, remove_room_input: RemoveRoomInput) {
@@ -168,8 +204,12 @@ impl RoomStorage {
 
     // send removed notification
     self.output_sender
-      .send(OutputParcel::new(room_id.clone(), Default::default(), Output::RoomRemoved(RoomRemovedOutput::new(room_id))))
+      .send(OutputParcel::new(room_id.clone(), Default::default(),
+                              Output::RoomRemoved(RoomRemovedOutput::new(room_id.clone()))))
       .unwrap();
+
+    // delete room from db
+    self.room_repository.delete_room(room_id.as_str()).await.ok();
   }
 
   fn send_error(&self, room_id: &str, error: OutputError) {

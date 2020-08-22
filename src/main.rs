@@ -18,7 +18,7 @@ async fn main() {
     }
   };
 
-  let server = Server::new(8080);
+  let server = Server::new(8080, repo_factory);
   server.run().await;
 }
 
