@@ -7,6 +7,7 @@ use std::str::FromStr;
 use chrono::{NaiveDateTime, DateTime, Utc};
 use std::collections::HashMap;
 use std::rc::Rc;
+use crate::model::message::Message;
 
 #[derive(Default)]
 pub struct RepositoryFactory(HashMap<String, Rc<dyn Repository>>);
@@ -114,6 +115,11 @@ impl RoomRepository {
     }
 
     pub async fn update_participant_in_room(&self, room_id: &str, participants: Vec<User>) -> Result<()> {
+        if self.load_one_room(room_id).await.is_none() {
+            println!("Room not found");
+            return Ok(());
+        }
+
         let mut statement = stmt!(Self::UPDATE_PARTICIPANTS_QUERY);
         let mut set = Set::new_from_data_type(DataType::new(ValueType::VARCHAR), participants.len());
         participants.iter().for_each(|item| {
@@ -242,12 +248,8 @@ impl UserRepository {
     pub async fn create_user(&self, user: User) -> Option<User> {
         let persistent_user = user.clone();
         let mut statement = stmt!(Self::INSERT_QUERY);
-        let user_id = cassandra_cpp::Uuid::from_str(
-            persistent_user.id.to_string().as_str()
-        )
-        .ok().unwrap();
 
-        statement.bind_uuid(0, user_id).ok();
+        statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(persistent_user.id)).ok();
         statement.bind_string(1, persistent_user.name.as_str()).ok();
         statement.bind_int64(2, Utc::now().timestamp()).ok();
 
@@ -298,8 +300,7 @@ impl UserRepository {
 
     pub async fn load_one_user(&self, id: Uuid) -> Option<User> {
         let mut statement = stmt!(Self::SELECT_ONE_QUERY);
-        statement.bind_uuid(0, cassandra_cpp::Uuid::from_str( id.to_string().as_str() )
-            .unwrap()).ok();
+        statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid( id )).ok();
 
         match self.retrieve_session().execute(&statement).await {
             Err(error) => {
@@ -334,7 +335,7 @@ impl UserRepository {
         let user_id: cassandra_cpp::Uuid = Result::ok( row.get(0) ).unwrap();
         Some(
             User {
-                id: Uuid::from_str( user_id.to_string().as_str() ).unwrap(),
+                id: Utils::from_cass_uuid_to_uuid(user_id),
                 name: Result::ok( row.get(1) ).unwrap(),
             }
         )
@@ -353,5 +354,173 @@ impl Repository for MessageRepository {
 }
 
 impl MessageRepository {
+    const INSERT_QUERY: &'static str = "INSERT INTO chat_app.message (id, user_id, user_name, room_id, body, create_at) \
+    VALUES(?, ?, ?, ?, ?, ?)";
 
+    const UPDATE_BODY_QUERY: &'static str = "UPDATE chat_app.message SET body = ? WHERE id = ?";
+
+    const SELECT_ALL_BY_ROOM_ID_QUERY: &'static str = "\
+    SELECT id, user_id, user_name, room_id, body, create_at \
+    FROM chat_app.message \
+    WHERE room_id = ? \
+    ORDER BY create_at DESC";
+
+    const SELECT_ONE_QUERY: &'static str = "SELECT id, user_id, user_name, room_id, body, create_at FROM chat_app.message \
+    WHERE id = ?";
+
+    const SELECT_EXIST_QUERY: &'static str = "SELECT COUNT(1) FROM chat_app.message WHERE id = ?";
+
+    const DELETE_QUERY: &'static str = "DELETE FROM chat_app.message WHERE id = ?";
+
+    pub async fn add_new_message(&self, room_id: &str, message: Message) -> Option<Message> {
+        let persistent_msg = message.clone();
+        let mut statement = stmt!(Self::INSERT_QUERY);
+        statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(persistent_msg.id) ).ok();
+        statement.bind_uuid(1, Utils::from_uuid_to_cass_uuid(persistent_msg.user.id)).ok();
+        statement.bind_string(2, persistent_msg.user.name.as_str()).ok();
+        statement.bind_string(3, room_id).ok();
+        statement.bind_string(4, persistent_msg.body.as_str()).ok();
+        statement.bind_int64(5, persistent_msg.created_at.timestamp()).ok();
+
+        let result = self.retrieve_session().execute(&statement).await;
+        match result {
+            Ok(_) => Some(message),
+            Err(error) => {
+                println!("Something bad happen: {:?}", error);
+                None
+            }
+        }
+    }
+
+    pub async fn update_message_body(&self, msg_id: Uuid, body: &str) -> Option<Message> {
+        if !self.check_message_exists(msg_id).await {
+            println!("message doesn't exists");
+            return None;
+        }
+
+        let message_id = Utils::from_uuid_to_cass_uuid(msg_id);
+        let mut statement = stmt!(Self::UPDATE_BODY_QUERY);
+        statement.bind_string(0, body).ok();
+        statement.bind_uuid(1, message_id).ok();
+
+        match self.retrieve_session().execute(&statement).await {
+            Ok(_) => self.load_one_message(msg_id).await,
+            Err(error) => {
+                println!("Something bad happen: {:?}", error);
+                None
+            }
+        }
+    }
+
+    pub async fn load_messages_by_room(&self, room_id: &str, page: i32, size: i32) -> Option<Vec<Message>> {
+        let mut res = Vec::<Message>::new();
+
+        let mut statement = stmt!(Self::SELECT_ALL_BY_ROOM_ID_QUERY);
+        statement.bind_string(0, room_id).ok();
+        statement.set_paging_size(size).ok();
+        let mut has_more_pages = false;
+        let mut paging = page - 1;
+
+        while has_more_pages && paging >= 0 {
+            match self.retrieve_session().execute(&statement).await {
+                Err(_) => break,
+                Ok(result) => {
+
+                    if paging == 0 {
+                        for row in result.iter() {
+                            res.push(Self::bind_to_message(row).unwrap() );
+                        }
+                    }
+
+                    has_more_pages = result.has_more_pages();
+                    if has_more_pages {
+                        statement.set_paging_state(result).ok();
+                    }
+                    paging -= 1;
+                }
+            }
+        }
+
+        Some(res)
+    }
+
+    pub async fn load_one_message(&self, msg_id: Uuid) -> Option<Message> {
+        let msg_id = Utils::from_uuid_to_cass_uuid(msg_id);
+        let mut statement = stmt!(Self::SELECT_ONE_QUERY);
+        statement.bind_uuid(0,msg_id).ok();
+
+        match self.retrieve_session().execute(&statement).await {
+            Ok(result) => {
+                if let Some(row) = result.first_row() {
+                    Self::bind_to_message(row)
+                }
+                else {
+                    None
+                }
+            }
+            Err(_) => {
+                println!("message not found");
+                None
+            }
+        }
+    }
+
+    pub async fn check_message_exists(&self, msg_id: Uuid) -> bool {
+        let msg_id = Utils::from_uuid_to_cass_uuid(msg_id);
+        let mut statement = stmt!(Self::SELECT_EXIST_QUERY);
+        statement.bind_uuid(0,msg_id).ok();
+        match self.retrieve_session().execute(&statement).await {
+            Ok(res) => {
+                res.row_count() > 0
+            }
+            Err(_) => false
+        }
+    }
+
+    pub async fn delete_message(&self, msg_id: Uuid) -> Result<()> {
+        let msg_id = Utils::from_uuid_to_cass_uuid(msg_id);
+        let mut statement = stmt!(Self::DELETE_QUERY);
+        statement.bind_uuid(0, msg_id).ok();
+
+        match self.retrieve_session().execute(&statement).await {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                Err(Error::from_kind(ErrorKind::Msg("Delete user failed".to_string())))
+            }
+        }
+    }
+
+    fn bind_to_message(row: Row) -> Option<Message> {
+        let msg_id: cassandra_cpp::Uuid = Result::ok( row.get(0) ).unwrap();
+        let user_id: cassandra_cpp::Uuid = Result::ok( row.get(1) ).unwrap();
+        Some(
+            Message {
+                id: Utils::from_cass_uuid_to_uuid(msg_id),
+                user: User {
+                    id: Utils::from_cass_uuid_to_uuid(user_id),
+                    name: Result::ok( row.get(2) ).unwrap(),
+                },
+                body: Result::ok( row.get(3) ).unwrap(),
+                created_at: Utils::from_timestamp_to_datetime( Result::ok( row.get(4) ).unwrap() )
+            }
+        )
+    }
+}
+
+pub struct Utils {}
+
+impl Utils {
+
+    pub fn from_uuid_to_cass_uuid(uuid: Uuid) -> cassandra_cpp::Uuid {
+        cassandra_cpp::Uuid::from_str( uuid.to_string().as_str() ).ok().unwrap()
+    }
+
+    pub fn from_cass_uuid_to_uuid(cass_uuid: cassandra_cpp::Uuid) -> Uuid {
+        Uuid::from_str(cass_uuid.to_string().as_str()).ok().unwrap()
+    }
+
+    pub fn from_timestamp_to_datetime(timestamp: i64) -> DateTime<Utc> {
+        let datetime = NaiveDateTime::from_timestamp(timestamp, 0);
+        DateTime::from_utc(datetime, Utc)
+    }
 }
