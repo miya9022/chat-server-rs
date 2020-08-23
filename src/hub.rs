@@ -11,9 +11,12 @@ use chrono::Utc;
 use crate::proto::*;
 use crate::model::{user::User, feed::Feed, message::Message};
 use crate::domain::repository::{UserRepository, MessageRepository};
+use std::borrow::{Borrow, BorrowMut};
+use std::ops::Deref;
 
 const OUTPUT_CHANNEL_SIZE: usize = 16;
 const MAX_MESSAGE_BODY_LENGTH: usize = 256;
+const DEFAULT_PAGE_SIZE: i32 = 15;
 lazy_static! {
   static ref USER_NAME_REGEX: Regex = Regex::new("[A-Za-z\\s]{4,24}").unwrap();
 }
@@ -34,8 +37,8 @@ pub struct Hub {
 }
 
 impl Hub {
-  pub fn new<'a>(options: HubOptions, output_sender: broadcast::Sender<OutputParcel>,
-                 user_repo: Arc<UserRepository>, msg_repo: Arc<MessageRepository>) -> Self {
+  pub fn new(options: HubOptions, output_sender: broadcast::Sender<OutputParcel>,
+             user_repo: Arc<UserRepository>, msg_repo: Arc<MessageRepository>) -> Self {
     // let (output_sender, _) = broadcast::channel(OUTPUT_CHANNEL_SIZE);
     Hub {
       alive_interval: options.alive_interval,
@@ -58,6 +61,14 @@ impl Hub {
   //       .unwrap();
   //   });
   // }
+
+  fn send_room(&self, room_id: &str, output: Output) {
+    if self.output_sender.receiver_count() > 0 {
+      self.output_sender
+          .send(OutputParcel::new(String::from(room_id), Uuid::default(), output))
+          .unwrap();
+    }
+  }
 
   fn send_targeted(&self, room_id: &str, client_id: Uuid, output: Output) {
     if self.output_sender.receiver_count() > 0 {
@@ -123,10 +134,83 @@ impl Hub {
   
   pub async fn process(&self, input_parcel: InputParcel) {
     match input_parcel.input {
+      Input::LoadRoom => self.process_load(input_parcel.room_id.as_str()).await,
       Input::JoinRoom(input) => self.process_join(input_parcel.room_id.as_str(), input_parcel.client_id, input).await,
       Input::PostMessage(input) => self.process_post(input_parcel.room_id.as_str(), input_parcel.client_id, input).await,
       _ => unimplemented!(),
     }
+  }
+
+  async fn process_load(&self, room_id: &str) {
+
+    // load messages
+    if self.feed.read().await.is_empty() {
+
+      // if feed is empty, let check db and insert to feed if present
+      if let Some(msgs) = self.msg_repo.load_messages_by_room(room_id, 1, DEFAULT_PAGE_SIZE).await {
+        let mut feed_write = self.feed.write().await;
+        msgs.iter().for_each(|msg| {
+          feed_write.add_message(msg.clone());
+        });
+      }
+    }
+
+    // load users
+    if self.users.read().await.is_empty() {
+
+      // load host
+      if let Some(host) = self.user_repo.load_host_room(room_id).await {
+        let mut users_write = self.users.write().await;
+        users_write.insert(host.id, host);
+      }
+      else {
+        self.send_error(room_id, Uuid::default(), OutputError::HostUserNotExists);
+        return;
+      }
+
+      // load participants
+      if let Some(participants) = self.user_repo.load_participants_room(room_id).await {
+        let mut users_write = self.users.write().await;
+        participants.iter().for_each(|participant| {
+          users_write.insert(participant.id, participant.clone());
+        });
+      }
+    }
+
+    // produce load room output
+    let feed_reader = self.feed.read().await;
+    let messages: Vec<MessageOutput> = feed_reader.messages_iter()
+        .map(|msg| {
+          let msg = msg.clone();
+          MessageOutput {
+            id: msg.id,
+            user: UserOutput {
+              id: msg.user.id,
+              name: msg.user.name
+            },
+            body: msg.body,
+            created_at: msg.created_at
+          }
+        })
+        .collect();
+
+    let users = self.users.read().await
+        .values()
+        .map(|user| {
+          let user = user.clone();
+          UserOutput {
+            id: user.id,
+            name: user.name
+          }
+        })
+        .collect();
+
+    self.send_room(room_id, Output::RoomLoaded(
+      RoomLoadedOutput {
+        users,
+        recent_messages: messages,
+      }
+    ))
   }
 
   async fn process_join(&self, room_id: &str, client_id: Uuid, input: JoinInput) {

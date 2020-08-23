@@ -6,6 +6,9 @@ use uuid::Uuid;
 #[serde(tag = "type", content = "payload", rename_all = "camelCase")]
 pub enum Input {
 
+  #[serde(rename = "load-room")]
+  LoadRoom,
+
   #[serde(rename = "create-room")]
   CreateRoom(RoomInput),
 
@@ -56,6 +59,9 @@ pub enum Output {
   #[serde(rename = "alive")]
   Alive,
 
+  #[serde(rename = "room-loaded")]
+  RoomLoaded(RoomLoadedOutput),
+
   #[serde(rename = "room-created")]
   RoomCreated(RoomCreatedOutput),
 
@@ -87,6 +93,9 @@ pub enum OutputError {
 
   #[serde(rename = "room-name-taken")]
   RoomNameTaken,
+  
+  #[serde(rename = "host-user-not-exists")]
+  HostUserNotExists,
   
   #[serde(rename = "invalid-room-name")]
   InvalidRoomName,
@@ -131,6 +140,13 @@ impl OutputParcel {
   pub fn new(room_id: String, client_id: Uuid, output: Output) -> Self {
     OutputParcel { room_id, client_id, output }
   }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomLoadedOutput {
+  pub users: Vec<UserOutput>,
+  pub recent_messages: Vec<MessageOutput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

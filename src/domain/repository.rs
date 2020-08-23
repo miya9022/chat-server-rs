@@ -76,9 +76,9 @@ impl RoomRepository {
     const SELECT_ONE_QUERY: &'static str = "SELECT room_id, host_id, host_name, participants, create_at, delete_key FROM chat_app.room \
     WHERE room_id = ?";
 
-    const DELETE_QUERY: &'static str = "DELETE FROM chat_app.room WHERE room_id = ?";
+    const SELECT_EXISTS_QUERY: &'static str = "SELECT COUNT(1) FROM chat_app.room WHERE room_id = ?";
 
-    const SEPARATOR_CHARS: &'static str = "*&&*";
+    const DELETE_QUERY: &'static str = "DELETE FROM chat_app.room WHERE room_id = ?";
 
     pub async fn create_room(&self, room: Room) -> Option<Room> {
         let persistence_room = room.clone();
@@ -95,7 +95,7 @@ impl RoomRepository {
             Some(participants) => {
                 let mut set = Set::new_from_data_type(DataType::new(ValueType::VARCHAR), participants.len());
                 participants.iter().for_each(|item| {
-                    set.append_string(&(item.id.to_string() + Self::SEPARATOR_CHARS + item.name.as_str())).ok();
+                    set.append_string(&(item.id.to_string() + Utils::SEPARATOR_CHARS + item.name.as_str())).ok();
                 });
                 set
             }
@@ -124,7 +124,7 @@ impl RoomRepository {
         let mut statement = stmt!(Self::UPDATE_PARTICIPANTS_QUERY);
         let mut set = Set::new_from_data_type(DataType::new(ValueType::VARCHAR), participants.len());
         participants.iter().for_each(|item| {
-            set.append_string(&(item.id.to_string() + Self::SEPARATOR_CHARS + item.name.as_str())).ok();
+            set.append_string(&(item.id.to_string() + Utils::SEPARATOR_CHARS + item.name.as_str())).ok();
         });
         statement.bind_set(0, set).ok();
         statement.bind_string(1, room_id).ok();
@@ -148,16 +148,16 @@ impl RoomRepository {
             Ok(cass_result) => {
                 cass_result.iter().map(|row| {
                     let participants: SetIterator = Result::ok(row.get(3)).unwrap();
-                    let participants = Self::get_participants(participants);
+                    let participants = Utils::get_participants(participants);
 
-                    let host_id: String = Result::ok(row.get(1)).unwrap();
+                    let host_id: cassandra_cpp::Uuid = Result::ok(row.get(1)).unwrap();
                     let create_at: i64 = Result::ok(row.get(4)).unwrap();
                     let create_at = NaiveDateTime::from_timestamp(create_at, 0);
                     let create_at = DateTime::from_utc(create_at, Utc);
                     Room {
                         room_id: Result::ok(row.get(0)).unwrap(),
                         host_info: User {
-                            id: Uuid::from_str(host_id.as_str()).unwrap(),
+                            id: Utils::from_cass_uuid_to_uuid(host_id),
                             name: Result::ok(row.get(2)).unwrap(),
                         },
                         participants,
@@ -169,6 +169,8 @@ impl RoomRepository {
         }
     }
 
+
+
     pub async fn load_one_room(&self, room_id: &str) -> Option<Room> {
         let mut statement = stmt!(Self::SELECT_ONE_QUERY);
         statement.bind_string(0, room_id).ok();
@@ -177,6 +179,21 @@ impl RoomRepository {
         match result.first_row() {
             None => None,
             Some(row) => Self::bind_to_room(row)
+        }
+    }
+
+    pub async fn room_exists(&self, room_id: &str) -> bool {
+        let mut statement = stmt!(Self::SELECT_EXISTS_QUERY);
+        statement.bind_string(0, room_id).ok();
+
+        match self.retrieve_session().execute(&statement).await {
+            Err(error) => {
+                println!("{:?}", error);
+                false
+            },
+            Ok(result) => {
+                result.row_count() > 0
+            }
         }
     }
 
@@ -193,18 +210,7 @@ impl RoomRepository {
         }
     }
 
-    fn get_participants(participants: SetIterator) -> Option<Vec<User>> {
-        Some(
-            participants.map(|participant| {
-                let part_record = Result::ok(participant.get_string()).unwrap();
-                let items: Vec<&str> = part_record.split(Self::SEPARATOR_CHARS).collect();
-                User {
-                    id: Uuid::from_str(items.get(0).unwrap()).unwrap(),
-                    name: items.get(1).unwrap().to_string(),
-                }
-            }).collect()
-        )
-    }
+
 
     fn bind_to_room(row: Row) -> Option<Room> {
         let host_id: cassandra_cpp::Uuid = Result::ok(row.get(1)).unwrap();
@@ -219,7 +225,7 @@ impl RoomRepository {
                 id: Uuid::from_str(host_id.to_string().as_str()).unwrap(),
                 name: Result::ok(row.get(2)).unwrap(),
             },
-            participants: Self::get_participants(participants),
+            participants: Utils::get_participants(participants),
             create_at,
             delete_key: Result::ok(row.get(5)).unwrap(),
         })
@@ -244,10 +250,21 @@ impl UserRepository {
 
     const SELECT_ONE_QUERY: &'static str = "SELECT id, name FROM chat_app.user WHERE id = ?";
 
+    const SELECT_HOST_USER: &'static str = "SELECT host_id, host_name FROM chat_app.room WHERE room_id = ?";
+
+    const SELECT_PARTICIPANTS: &'static str = "SELECT participants FROM chat_app.room WHERE room_id = ?";
+
+    const SELECT_EXISTS_QUERY: &'static str = "SELECT COUNT(1) FROM chat_app.user WHERE id = ?";
+
     const DELETE_QUERY: &'static str = "DELETE FROM chat_app.user WHERE id = ?";
 
     pub async fn create_user(&self, user: User) -> Option<User> {
         let persistent_user = user.clone();
+        if self.user_exists(user.id).await {
+            println!("User has already exists");
+            return None;
+        }
+
         let mut statement = stmt!(Self::INSERT_QUERY);
 
         statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(persistent_user.id)).ok();
@@ -313,6 +330,60 @@ impl UserRepository {
                     None => None,
                     Some(row) => Self::bind_to_user(row)
                 }
+            }
+        }
+    }
+
+    pub async fn load_host_room(&self, room_id: &str) -> Option<User> {
+        let mut statement = stmt!(Self::SELECT_HOST_USER);
+        statement.bind_string(0, room_id).ok();
+        let result = self.retrieve_session().execute(&statement).await;
+
+        match result {
+            Err(_) => None,
+            Ok(cass_result) => {
+                if let Some(row) = cass_result.first_row() {
+                    let host_id: cassandra_cpp::Uuid = Result::ok(row.get(0)).unwrap();
+                    Some(User {
+                        id: Utils::from_cass_uuid_to_uuid(host_id),
+                        name: Result::ok( row.get(1) ).unwrap(),
+                    })
+                }
+                else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub async fn load_participants_room(&self, room_id: &str) -> Option<Vec<User>> {
+        let mut statement = stmt!(Self::SELECT_PARTICIPANTS);
+        statement.bind_string(0, room_id).ok();
+
+        match self.retrieve_session().execute(&statement).await {
+            Err(_) => None,
+            Ok(cass_result) => {
+                if let Some(row) = cass_result.first_row() {
+                    Utils::get_participants( Result::ok( row.get(0) ).unwrap() )
+                }
+                else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub async fn user_exists(&self, id: Uuid) -> bool {
+        let mut statement = stmt!(Self::SELECT_EXISTS_QUERY);
+        statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(id)).ok();
+
+        match self.retrieve_session().execute(&statement).await {
+            Err(error) => {
+                println!("{:?}", error);
+                false
+            },
+            Ok(result) => {
+                result.row_count() > 0
             }
         }
     }
@@ -512,6 +583,8 @@ pub struct Utils {}
 
 impl Utils {
 
+    const SEPARATOR_CHARS: &'static str = "*&&*";
+
     pub fn from_uuid_to_cass_uuid(uuid: Uuid) -> cassandra_cpp::Uuid {
         cassandra_cpp::Uuid::from_str( uuid.to_string().as_str() ).ok().unwrap()
     }
@@ -523,5 +596,18 @@ impl Utils {
     pub fn from_timestamp_to_datetime(timestamp: i64) -> DateTime<Utc> {
         let datetime = NaiveDateTime::from_timestamp(timestamp, 0);
         DateTime::from_utc(datetime, Utc)
+    }
+
+    fn get_participants(participants: SetIterator) -> Option<Vec<User>> {
+        Some(
+            participants.map(|participant| {
+                let part_record = Result::ok(participant.get_string()).unwrap();
+                let items: Vec<&str> = part_record.split(Self::SEPARATOR_CHARS).collect();
+                User {
+                    id: Uuid::from_str(items.get(0).unwrap()).unwrap(),
+                    name: items.get(1).unwrap().to_string(),
+                }
+            }).collect()
+        )
     }
 }

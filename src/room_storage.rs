@@ -114,6 +114,7 @@ impl RoomStorage {
 
   async fn process(&self, input_parcel: InputParcel) {
     match input_parcel.input {
+      Input::LoadRoom => self.load_room(input_parcel.room_id).await,
       Input::CreateRoom(room_input) => self.create_room(input_parcel.room_id, room_input).await,
       Input::DeleteRoom(remove_room_input) => self.delete_room(remove_room_input).await,
       _ => match self.get_hub(input_parcel.room_id.as_str()).await {
@@ -122,6 +123,34 @@ impl RoomStorage {
         },
         None => self.send_error(input_parcel.room_id.as_str(), OutputError::RoomNotExists)
       }
+    }
+  }
+
+  async fn load_room(&self, room_id: String) {
+
+    // check room exists
+    if !self.rooms.read().await.contains_key(room_id.as_str()) && !self.room_repository.room_exists(room_id.as_str()).await {
+      self.send_error(room_id.as_str(), OutputError::RoomNotExists);
+      return;
+    }
+
+    // get room instance
+    if let Some(room) = self.get_room(room_id.as_str()).await {
+
+      // get hub instance
+      let hub: Arc<Hub> = match self.get_hub(room.room_id.as_str()).await {
+        Some(hub) => hub,
+
+        // if hub hasn't exists yet, create a new one with room respectively
+        None => {
+          self.hubs.write().await.insert(room_id.clone(), self.new_hub()).unwrap()
+        }
+      };
+
+      // hub notify all load user and load most recent messages
+      hub.process(
+        InputParcel::new(Uuid::default(), room_id, Input::LoadRoom)
+      ).await
     }
   }
 
@@ -210,6 +239,13 @@ impl RoomStorage {
 
     // delete room from db
     self.room_repository.delete_room(room_id.as_str()).await.ok();
+  }
+
+  fn new_hub(&self) -> Arc<Hub> {
+    Arc::new(
+      Hub::new(self.hub_options.unwrap(), self.output_sender.clone(),
+             Arc::clone(&self.user_repository), Arc::clone(&self.message_repository))
+    )
   }
 
   fn send_error(&self, room_id: &str, error: OutputError) {
