@@ -178,8 +178,8 @@ impl Hub {
     }
 
     // produce load room output
-    let feed_reader = self.feed.read().await;
-    let messages: Vec<MessageOutput> = feed_reader.messages_iter()
+    let messages: Vec<MessageOutput> = self.feed.read().await
+        .messages_iter()
         .map(|msg| {
           let msg = msg.clone();
           MessageOutput {
