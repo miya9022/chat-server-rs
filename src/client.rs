@@ -6,7 +6,8 @@ use uuid::Uuid;
 use warp::filters::ws::WebSocket;
 
 use crate::error::{Error, Result};
-use crate::proto::{InputParcel, OutputParcel};
+use crate::proto::{InputParcel, OutputParcel, Input};
+use crate::proto::Input::{PostMessage, JoinRoom};
 
 #[derive(Clone, Default)]
 pub struct Client {
@@ -16,15 +17,15 @@ pub struct Client {
 
 impl Client {
   pub fn new(room_id: String) -> Self {
-    Client { room_id, id: Uuid::new_v4() }
+    Client { room_id, id: Uuid::default() }
   }
 
   pub fn read_input(
     &self,
     stream: SplitStream<WebSocket>
   ) -> impl Stream<Item = Result<InputParcel>> {
-    let client_id = self.id;
     let rid = self.room_id.clone();
+    let mut client_id = self.id;
 
     stream
       // take only text messages
@@ -39,7 +40,14 @@ impl Client {
       .map(move |message| match message {
         Err(err) => Err(Error::System(err.to_string())),
         Ok(message) => {
-          let input = serde_json::from_str(message.to_str().unwrap())?;
+          let input: Input = serde_json::from_str(message.to_str().unwrap())?;
+          if let PostMessage(post) = input.clone() {
+            client_id = post.client_id;
+          }
+
+          if let JoinRoom(join) = input.clone() {
+            client_id = join.client_id;
+          }
           Ok(InputParcel::new(client_id, rid.clone(), input))
         }
       })
@@ -50,19 +58,11 @@ impl Client {
     S: TryStream<Ok = OutputParcel, Error = E> + Stream<Item = result::Result<OutputParcel, E>>,
     E: error::Error,
   {
-    let client_id = self.id;
     let room_id = self.room_id.clone();
     stream
       // skip irrelevent parcels
       .try_filter(move |output_parcel| {
-        let filtering = 
-          // if output only have room_id
-          (output_parcel.client_id.is_nil() && output_parcel.room_id == room_id) ||
-
-          // if output is message chat
-          (output_parcel.client_id == client_id && output_parcel.room_id == room_id);
-
-        future::ready(filtering)
+        future::ready(output_parcel.room_id == room_id)
       })
       // serialize to JSON
       .map_ok(|output_parcel| {

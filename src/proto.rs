@@ -9,7 +9,7 @@ pub enum Input {
   #[serde(rename = "load-room")]
   LoadRoom,
 
-  #[serde(rename = "create-room")]
+  #[serde(rename = "create-room")] // { 'create-room': { 'hostId': 'uuid', 'hostName': 'asd', participants: [], deleteKey: '' } }
   CreateRoom(RoomInput),
 
   #[serde(rename = "remove-room")]
@@ -28,6 +28,7 @@ pub struct RoomInput {
   pub host_id: Uuid,
   pub host_name: String,
   pub participants: Option<Vec<String>>,
+  pub delete_key: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -40,12 +41,14 @@ pub struct RemoveRoomInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JoinInput {
+  pub client_id: Uuid,
   pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostInput {
+  pub client_id: Uuid,
   pub body: String,
 }
 

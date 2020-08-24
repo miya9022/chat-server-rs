@@ -12,7 +12,7 @@ use crate::proto::*;
 use crate::domain::repository::{RoomRepository, RepositoryFactory, UserRepository, MessageRepository};
 use crate::utils::AppUtils;
 
-const OUTPUT_CHANNEL_SIZE: usize = 65536;
+const OUTPUT_CHANNEL_SIZE: usize = 256;
 
 pub struct RoomStorage {
   output_sender: broadcast::Sender<OutputParcel>,
@@ -173,7 +173,8 @@ impl RoomStorage {
           .collect()
       });
 
-    let room = Room::new(room_id.clone(), input.host_id, input.host_name.clone(), users.clone(), Utc::now(), Default::default());
+    let room = Room::new(room_id.clone(), input.host_id, input.host_name.clone(), users.clone(),
+                         Utc::now(), input.delete_key);
     self.rooms.write().await.insert(room_id.clone(), Arc::new(room.clone()));
 
     // create Hub
@@ -181,7 +182,8 @@ impl RoomStorage {
                        Arc::clone(&self.user_repository), Arc::clone(&self.message_repository));
 
     // invite host
-    let host_input = InputParcel::new(input.host_id, room_id.clone(), Input::JoinRoom(JoinInput{ name: input.host_name }));
+    let host_input = InputParcel::new(input.host_id, room_id.clone(),
+                                      Input::JoinRoom( JoinInput{ client_id: input.host_id, name: input.host_name } ));
     hub.process(host_input).await;
 
     // invite participants
@@ -190,7 +192,8 @@ impl RoomStorage {
       .map(|us| {
         (*us).iter()
           .map(|user| {
-            InputParcel::new(user.id, room_id.clone(), Input::JoinRoom(JoinInput{ name: user.name.clone() }))
+            InputParcel::new(user.id, room_id.clone(),
+                             Input::JoinRoom( JoinInput{ client_id: user.id, name: user.name.clone() } ))
           })
           .collect::<Vec<InputParcel>>()
       });
