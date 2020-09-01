@@ -8,6 +8,7 @@ pub mod server;
 pub mod client;
 pub mod error;
 pub mod room_storage;
+pub mod user_storage;
 
 pub mod cass;
 pub mod domain;

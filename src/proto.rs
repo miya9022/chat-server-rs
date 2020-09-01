@@ -6,6 +6,9 @@ use uuid::Uuid;
 #[serde(tag = "type", content = "payload", rename_all = "camelCase")]
 pub enum Input {
 
+  #[serde(rename = "load-rooms")]
+  LoadRooms(LoadRoomsInput),
+
   #[serde(rename = "load-room")]
   LoadRoom,
 
@@ -24,7 +27,14 @@ pub enum Input {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LoadRoomsInput {
+  pub user_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RoomInput {
+  pub room_title: String,
   pub host_id: Uuid,
   pub host_name: String,
   pub participants: Option<Vec<String>>,
@@ -61,6 +71,9 @@ pub enum Output {
 
   #[serde(rename = "alive")]
   Alive,
+
+  #[serde(rename = "rooms-loaded")]
+  RoomsLoaded(RoomsLoadedOutput),
 
   #[serde(rename = "room-loaded")]
   RoomLoaded(RoomLoadedOutput),
@@ -147,6 +160,12 @@ impl OutputParcel {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RoomsLoadedOutput {
+  pub rooms: Vec<RoomOutput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RoomLoadedOutput {
   pub users: Vec<UserOutput>,
   pub recent_messages: Vec<MessageOutput>,
@@ -162,6 +181,15 @@ pub struct RoomCreatedOutput {
 #[serde(rename_all = "camelCase")]
 pub struct RoomRemovedOutput {
   pub room_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomOutput {
+  pub room_id: String,
+  pub room_title: String,
+  pub user_id: Uuid,
+  pub create_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -214,6 +242,14 @@ pub struct UserPostedOutput {
   pub message: MessageOutput,
 }
 
+impl RoomsLoadedOutput {
+  pub fn new(rooms: Vec<RoomOutput>) -> Self {
+    RoomsLoadedOutput {
+      rooms
+    }
+  }
+}
+
 impl RoomCreatedOutput {
   pub fn new(room_id: String) -> Self {
     RoomCreatedOutput {
@@ -226,6 +262,21 @@ impl RoomRemovedOutput {
   pub fn new(room_id: String) -> Self {
     RoomRemovedOutput {
       room_id
+    }
+  }
+}
+
+impl RoomOutput {
+  pub fn new(
+    room_id: String,
+    room_title: String,
+    user_id: Uuid,
+    create_at: DateTime<Utc>) -> Self {
+    RoomOutput {
+      room_id,
+      room_title,
+      user_id,
+      create_at
     }
   }
 }

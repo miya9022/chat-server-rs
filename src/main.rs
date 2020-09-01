@@ -11,6 +11,7 @@ async fn main() {
     Ok(ref mut session) => {
       repo_factory.add_repository(session, RepoKind::ROOM);
       repo_factory.add_repository(session, RepoKind::USER);
+      repo_factory.add_repository(session, RepoKind::ROOM_USERS);
       repo_factory.add_repository(session, RepoKind::MESSAGE);
     },
     Err(error) => {
@@ -19,7 +20,8 @@ async fn main() {
   };
 
   let server = Server::new(8888, repo_factory);
-  server.run().await;
+  server.run_room().await;
+  server.run_user(8889).await;
 }
 
 async fn init_cassandra_cluster() -> Option<ServerNode> {

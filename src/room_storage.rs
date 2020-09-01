@@ -26,20 +26,23 @@ pub struct RoomStorage {
 }
 
 impl RoomStorage {
-  pub fn new(hub_options: Option<HubOptions>, repo_fact: RepositoryFactory) -> Self {
+  pub fn new(hub_options: Option<HubOptions>, repo_fact: &RepositoryFactory) -> Self {
     let (output_sender, _) = broadcast::channel(OUTPUT_CHANNEL_SIZE);
 
-    let room_repository = match AppUtils::downcast_arc::<RoomRepository>(repo_fact.get_repository("ROOM")) {
+    let room_repository = match AppUtils::downcast_arc::<RoomRepository>(
+      repo_fact.get_repository("ROOM")) {
       Ok(repo) => repo,
       Err(_) => panic!("can't find repository")
     };
 
-    let user_repository = match AppUtils::downcast_arc::<UserRepository>(repo_fact.get_repository("USER")) {
+    let user_repository = match AppUtils::downcast_arc::<UserRepository>(
+      repo_fact.get_repository("USER")) {
       Ok(repo) => repo,
       Err(_) => panic!("can't find repository")
     };
 
-    let message_repository = match AppUtils::downcast_arc::<MessageRepository>(repo_fact.get_repository("MESSAGE"))  {
+    let message_repository = match AppUtils::downcast_arc::<MessageRepository>(
+      repo_fact.get_repository("MESSAGE"))  {
       Ok(repo) => repo,
       Err(_) => panic!("can't find repository")
     };
@@ -96,7 +99,8 @@ impl RoomStorage {
       time::delay_for(alive_interval).await;
       self.rooms.read().await.keys().for_each(|room_id| {
         self.output_sender
-          .send(OutputParcel::new(String::from(room_id), Default::default(), Output::Alive))
+          .send(OutputParcel::new(
+            String::from(room_id), Default::default(), Output::Alive))
           .unwrap();
       })
     }
@@ -129,7 +133,8 @@ impl RoomStorage {
   async fn load_room(&self, room_id: String) {
 
     // check room exists
-    if !self.rooms.read().await.contains_key(room_id.as_str()) && !self.room_repository.room_exists(room_id.as_str()).await {
+    if !self.rooms.read().await.contains_key(room_id.as_str()) &&
+        !self.room_repository.room_exists(room_id.as_str()).await {
       self.send_error(room_id.as_str(), OutputError::RoomNotExists);
       return;
     }
@@ -173,8 +178,8 @@ impl RoomStorage {
           .collect()
       });
 
-    let room = Room::new(room_id.clone(), input.host_id, input.host_name.clone(), users.clone(),
-                         Utc::now(), input.delete_key);
+    let room = Room::new(room_id.clone(), input.room_title, input.host_id, input.host_name.clone(),
+                         users.clone(), Utc::now(), input.delete_key);
     self.rooms.write().await.insert(room_id.clone(), Arc::new(room.clone()));
 
     // create Hub
@@ -209,7 +214,8 @@ impl RoomStorage {
 
     // send created notification
     self.output_sender
-      .send(OutputParcel::new(room_id.clone(), Default::default(), Output::RoomCreated(RoomCreatedOutput::new(room_id))))
+      .send(OutputParcel::new(room_id.clone(), Default::default(),
+                              Output::RoomCreated(RoomCreatedOutput::new(room_id))))
       .unwrap();
 
     // serve room to database
@@ -237,7 +243,8 @@ impl RoomStorage {
     // send removed notification
     self.output_sender
       .send(OutputParcel::new(room_id.clone(), Default::default(),
-                              Output::RoomRemoved(RoomRemovedOutput::new(room_id.clone()))))
+                              Output::RoomRemoved(
+                                RoomRemovedOutput::new(room_id.clone()))))
       .unwrap();
 
     // delete room from db
@@ -253,7 +260,8 @@ impl RoomStorage {
 
   fn send_error(&self, room_id: &str, error: OutputError) {
     self.output_sender
-      .send(OutputParcel::new(String::from(room_id), Default::default(), Output::Error(error)))
+      .send(OutputParcel::new(String::from(room_id),
+                              Default::default(), Output::Error(error)))
       .unwrap();
   }
 }
