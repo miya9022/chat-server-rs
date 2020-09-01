@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Room {
   pub room_id: String,
+  pub room_title: String,
   pub host_info: User,
   pub participants: Option<Vec<User>>,
   pub create_at: DateTime<Utc>,
@@ -13,7 +14,8 @@ pub struct Room {
 
 impl Room {
   pub fn new(
-    room_id: String, 
+    room_id: String,
+    room_title: String,
     host_id: Uuid, 
     host_name: String, 
     participants: Option<Vec<User>>, 
@@ -22,6 +24,7 @@ impl Room {
   ) -> Self {
     Room {
       room_id,
+      room_title,
       host_info: User::new(host_id, host_name.as_str()),
       participants,
       create_at,

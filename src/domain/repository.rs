@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::model::room::Room;
 use crate::model::user::User;
 use crate::model::message::Message;
+use crate::model::room_user::RoomUser;
 
 #[derive(Default)]
 pub struct RepositoryFactory(HashMap<String, Arc<dyn Any>>);
@@ -27,7 +28,10 @@ impl RepositoryFactory {
             RepoKind::USER => ("USER", Arc::new(UserRepository {
                 session: unsafe { Arc::from_raw(session) }
             })),
-            RepoKind::MESSAGE => ("MESSAGE", Arc::new(MessageRepository {
+            RepoKind::ROOM_USERS => ("ROOM_USERS", Arc::new(RoomUserRepository {
+                session: unsafe { Arc::from_raw(session) }
+            })),
+                RepoKind::MESSAGE => ("MESSAGE", Arc::new(MessageRepository {
                 session: unsafe { Arc::from_raw(session) }
             })),
         };
@@ -45,6 +49,7 @@ impl RepositoryFactory {
 pub enum RepoKind {
     ROOM,
     USER,
+    ROOM_USERS,
     MESSAGE,
 }
 
@@ -156,6 +161,7 @@ impl RoomRepository {
                     let create_at = DateTime::from_utc(create_at, Utc);
                     Room {
                         room_id: Result::ok(row.get(0)).unwrap(),
+                        room_title: Result::ok(row.get(1)).unwrap(),
                         host_info: User {
                             id: Utils::from_cass_uuid_to_uuid(host_id),
                             name: Result::ok(row.get(2)).unwrap(),
@@ -168,8 +174,6 @@ impl RoomRepository {
             }
         }
     }
-
-
 
     pub async fn load_one_room(&self, room_id: &str) -> Option<Room> {
         let mut statement = stmt!(Self::SELECT_ONE_QUERY);
@@ -221,6 +225,7 @@ impl RoomRepository {
 
         Some(Room {
             room_id: Result::ok(row.get(0)).unwrap(),
+            room_title: Result::ok( row.get(1)).unwrap(),
             host_info: User {
                 id: Uuid::from_str(host_id.to_string().as_str()).unwrap(),
                 name: Result::ok(row.get(2)).unwrap(),
@@ -229,6 +234,122 @@ impl RoomRepository {
             create_at,
             delete_key: Result::ok(row.get(5)).unwrap(),
         })
+    }
+}
+
+pub struct RoomUserRepository {
+    session: Arc<Session>
+}
+
+impl Repository for RoomUserRepository {
+
+    fn retrieve_session(&self) -> &Session {
+        &self.session
+    }
+}
+
+impl RoomUserRepository {
+    const INSERT_QUERY: &'static str = "INSERT INTO chat_app.room_users (room_id, user_id, room_title, create_at) VALUES(?, ?, ?, ?)";
+
+    const SELECT_BY_USER: &'static str = "SELECT room_id, user_id, room_title, create_at FROM chat_app.room_users WHERE user_id = ?";
+
+    const DELETE_QUERY: &'static str = "DELETE FROM chat_app.room_users WHERE room_id = ? AND user_id = ?";
+
+    const DELETE_BY_ROOM: &'static str = "DELETE FROM chat_app.room_users WHERE room_id = ?";
+
+    pub async fn create_room_users(&self, input: RoomUser) -> Option<RoomUser> {
+        let mut statement = stmt!(Self::INSERT_QUERY);
+
+        statement.bind_string(0, input.room_id.as_str()).ok();
+        statement.bind_uuid(1, Utils::from_uuid_to_cass_uuid(input.user_id)).ok();
+        statement.bind_string(2, input.room_id.as_str()).ok();
+        statement.bind_int64(3, Utc::now().timestamp()).ok();
+
+        let result = self.retrieve_session().execute(&statement).await;
+        match result {
+            Ok(_) => Some(input),
+            Err(error) => {
+                println!("Something bad happen: {:?}", error);
+                None
+            }
+        }
+    }
+
+    pub async fn load_by_userid(&self, user_id: Uuid, page: i32, size: i32) -> Option<Vec<RoomUser>> {
+        let mut res = Vec::<RoomUser>::new();
+
+        let mut has_more_pages = true;
+        let mut paging = page - 1;
+
+        let mut statement = Statement::new(Self::SELECT_BY_USER, 0);
+        statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(user_id)).ok();
+        statement.set_paging_size(size).ok();
+
+        while has_more_pages && paging >= 0 {
+            match self.retrieve_session().execute(&statement).await.ok() {
+                None => break,
+                Some(result) => {
+
+                    if paging == 0 {
+                        for row in result.iter() {
+                            match Self::bind_to_roomuser(row) {
+                                None => continue,
+                                Some(user) => res.push(user),
+                            };
+                        }
+                    }
+
+                    has_more_pages = result.has_more_pages();
+                    if has_more_pages {
+                        statement.set_paging_state(result).ok();
+                    }
+                    paging -= 1;
+                }
+            };
+        }
+
+        Some(res)
+    }
+
+    pub async fn delete_room_user(&self, room_id: String, user_id: Uuid) -> Result<()> {
+        let mut statement = stmt!(Self::DELETE_QUERY);
+        statement.bind_string(0, room_id.as_str()).ok();
+        let cass_uuid = cassandra_cpp::Uuid::from_str( user_id.to_string().as_str() ).ok().unwrap();
+        statement.bind_uuid(1, cass_uuid).ok();
+
+        let result = Result::ok(self.retrieve_session().execute(&statement).await);
+
+        match result {
+            Some(_) => Ok(()),
+            None => {
+                Err(Error::from_kind(ErrorKind::Msg("Delete user failed".to_string())))
+            }
+        }
+    }
+
+    pub async fn delete_by_room(&self, room_id: String) -> Result<()> {
+        let mut statement = stmt!(Self::DELETE_BY_ROOM);
+        statement.bind_string(0, room_id.as_str()).ok();
+        let result = Result::ok(self.retrieve_session().execute(&statement).await);
+
+        match result {
+            Some(_) => Ok(()),
+            None => {
+                Err(Error::from_kind(ErrorKind::Msg("Delete user failed".to_string())))
+            }
+        }
+    }
+
+    fn bind_to_roomuser(row: Row) -> Option<RoomUser> {
+        let user_id: cassandra_cpp::Uuid = Result::ok( row.get(1) ).unwrap();
+        Some(
+            RoomUser {
+                room_id: Result::ok(row.get(0)).unwrap(),
+                user_id: Utils::from_cass_uuid_to_uuid(user_id),
+                room_title: Result::ok(row.get(2)).unwrap(),
+                create_at: Utils::from_timestamp_to_datetime(Result::ok(row.get(3)).unwrap()),
+            }
+        )
     }
 }
 

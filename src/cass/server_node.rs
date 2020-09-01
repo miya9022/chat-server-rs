@@ -25,6 +25,7 @@ impl ServerNode {
                 ServerNode::load_schema_from_file(&schema_loader, "cql/keyspace.cql").await;
                 ServerNode::load_schema_from_file(&schema_loader, "cql/room.cql").await;
                 ServerNode::load_schema_from_file(&schema_loader, "cql/user.cql").await;
+                ServerNode::load_schema_from_file(&schema_loader, "cql/room_users.cql").await;
                 ServerNode::load_schema_from_file(&schema_loader, "cql/message.cql").await;
 
                 Ok(())
