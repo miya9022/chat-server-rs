@@ -22,3 +22,11 @@ cassandra-cpp = "0.15.1"
 
 [dev-dependencies]
 tokio-test = "*"
+
+[[bin]]
+name = "feeds"
+path = "src/main.rs"
+
+[[bin]]
+name = "rooms"
+path = "src/main_room.rs"

@@ -31,7 +31,7 @@ impl RepositoryFactory {
             RepoKind::ROOM_USERS => ("ROOM_USERS", Arc::new(RoomUserRepository {
                 session: unsafe { Arc::from_raw(session) }
             })),
-                RepoKind::MESSAGE => ("MESSAGE", Arc::new(MessageRepository {
+            RepoKind::MESSAGE => ("MESSAGE", Arc::new(MessageRepository {
                 session: unsafe { Arc::from_raw(session) }
             })),
         };

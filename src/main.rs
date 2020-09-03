@@ -21,7 +21,6 @@ async fn main() {
 
   let server = Server::new(8888, repo_factory);
   server.run_room().await;
-  server.run_user(8889).await;
 }
 
 async fn init_cassandra_cluster() -> Option<ServerNode> {
