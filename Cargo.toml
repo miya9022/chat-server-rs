@@ -18,15 +18,17 @@ uuid = { version = "0.8.1", features = ["serde", "v4"] }
 tokio = { version = "0.2", features = ["full"] }
 futures = "0.3.5"
 warp = "0.2.4"
+cdrs-async = "0.1.0-alpha.0"
 cassandra-cpp = "0.15.1"
+async-trait = "0.1.40"
 
 [dev-dependencies]
 tokio-test = "*"
 
 [[bin]]
 name = "feeds"
-path = "src/main.rs"
+path = "src/main_room.rs"
 
 [[bin]]
 name = "rooms"
-path = "src/main_room.rs"
+path = "src/main_user.rs"

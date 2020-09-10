@@ -6,13 +6,16 @@ use uuid::Uuid;
 #[serde(tag = "type", content = "payload", rename_all = "camelCase")]
 pub enum Input {
 
+  #[serde(rename = "ping")]
+  Ping,
+
   #[serde(rename = "load-rooms")]
   LoadRooms(LoadRoomsInput),
 
   #[serde(rename = "load-room")]
   LoadRoom,
 
-  #[serde(rename = "create-room")] // { 'create-room': { 'hostId': 'uuid', 'hostName': 'asd', participants: [], deleteKey: '' } }
+  #[serde(rename = "create-room")]
   CreateRoom(RoomInput),
 
   #[serde(rename = "remove-room")]
@@ -65,6 +68,9 @@ pub struct PostInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum Output {
+
+  #[serde(rename = "pong")]
+  Pong,
   
   #[serde(rename = "error")]
   Error(OutputError),

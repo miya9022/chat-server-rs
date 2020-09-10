@@ -9,8 +9,9 @@ use tokio::time;
 use crate::model::{room::Room, user::User};
 use crate::hub::{Hub, HubOptions};
 use crate::proto::*;
-use crate::domain::repository::{RoomRepository, RepositoryFactory, UserRepository, MessageRepository};
+use crate::domain::repository::{RoomRepository, RepositoryFactory, UserRepository, MessageRepository, RoomUserRepository};
 use crate::utils::AppUtils;
+use crate::model::room_user::RoomUser;
 
 const OUTPUT_CHANNEL_SIZE: usize = 256;
 
@@ -22,7 +23,8 @@ pub struct RoomStorage {
 
   room_repository: Arc<RoomRepository>,
   user_repository: Arc<UserRepository>,
-  message_repository: Arc<MessageRepository>
+  message_repository: Arc<MessageRepository>,
+  room_user_repository: Arc<RoomUserRepository>,
 }
 
 impl RoomStorage {
@@ -42,7 +44,13 @@ impl RoomStorage {
     };
 
     let message_repository = match AppUtils::downcast_arc::<MessageRepository>(
-      repo_fact.get_repository("MESSAGE"))  {
+      repo_fact.get_repository("MESSAGE")) {
+      Ok(repo) => repo,
+      Err(_) => panic!("can't find repository")
+    };
+
+    let room_user_repository = match AppUtils::downcast_arc::<RoomUserRepository>(
+      repo_fact.get_repository("ROOM_USERS")) {
       Ok(repo) => repo,
       Err(_) => panic!("can't find repository")
     };
@@ -55,6 +63,7 @@ impl RoomStorage {
       room_repository,
       user_repository,
       message_repository,
+      room_user_repository,
     }
   }
 
@@ -118,6 +127,7 @@ impl RoomStorage {
 
   async fn process(&self, input_parcel: InputParcel) {
     match input_parcel.input {
+      Input::Ping => self.send_pong(input_parcel),
       Input::LoadRoom => self.load_room(input_parcel.room_id).await,
       Input::CreateRoom(room_input) => self.create_room(input_parcel.room_id, room_input).await,
       Input::DeleteRoom(remove_room_input) => self.delete_room(remove_room_input).await,
@@ -128,6 +138,12 @@ impl RoomStorage {
         None => self.send_error(input_parcel.room_id.as_str(), OutputError::RoomNotExists)
       }
     }
+  }
+
+  fn send_pong(&self, input_parcel: InputParcel) {
+    self.output_sender
+        .send(OutputParcel::new(input_parcel.room_id, input_parcel.client_id, Output::Pong))
+        .unwrap();
   }
 
   async fn load_room(&self, room_id: String) {
@@ -212,14 +228,30 @@ impl RoomStorage {
     // serve hub instance
     self.hubs.write().await.insert(room_id.clone(), Arc::new(hub));
 
+    // serve room to database
+    if let Some(room) = self.room_repository.create_room(room).await {
+      let mut users = vec![];
+      users.push(room.host_info);
+      if let Some(mut parts) = room.participants {
+        users.append(&mut parts);
+      }
+
+      for user in users {
+        let room_user = RoomUser::new(
+          room.room_id.clone(),
+          room.room_title.clone(),
+          user.id,
+          room.create_at,
+        );
+        self.room_user_repository.create_room_users(room_user).await;
+      }
+    }
+
     // send created notification
     self.output_sender
       .send(OutputParcel::new(room_id.clone(), Default::default(),
                               Output::RoomCreated(RoomCreatedOutput::new(room_id))))
       .unwrap();
-
-    // serve room to database
-    self.room_repository.create_room(room).await;
   }
 
   async fn delete_room(&self, remove_room_input: RemoveRoomInput) {

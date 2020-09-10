@@ -32,7 +32,7 @@ impl RoomClient {
       // take only text messages
       .take_while(|message| {
         future::ready(if let Ok(message) = message {
-          message.is_text()
+          message.is_ping() || message.is_text()
         } else {
           false
         })
@@ -41,15 +41,24 @@ impl RoomClient {
       .map(move |message| match message {
         Err(err) => Err(Error::System(err.to_string())),
         Ok(message) => {
-          let input: Input = serde_json::from_str(message.to_str().unwrap())?;
-          if let PostMessage(post) = input.clone() {
-            client_id = post.client_id;
+          if message.is_text() {
+            let input: Input = serde_json::from_str(message.to_str().unwrap())?;
+            if let PostMessage(post) = input.clone() {
+              client_id = post.client_id;
+            }
+
+            if let JoinRoom(join) = input.clone() {
+              client_id = join.client_id;
+            }
+            Ok(InputParcel::new(client_id, rid.clone(), input))
+          }
+          else if message.is_ping() {
+            Ok(InputParcel::new(client_id, rid.clone(), Input::Ping))
+          }
+          else {
+            Err(Error::System("UNDEFINED BEHAVIOR".to_string()))
           }
 
-          if let JoinRoom(join) = input.clone() {
-            client_id = join.client_id;
-          }
-          Ok(InputParcel::new(client_id, rid.clone(), input))
         }
       })
   }
@@ -94,7 +103,7 @@ impl UserClient {
         // take only text messages
         .take_while(|message| {
           future::ready(if let Ok(message) = message {
-            message.is_text()
+            message.is_ping() || message.is_text()
           } else {
             false
           })
@@ -103,8 +112,16 @@ impl UserClient {
         .map(move |message| match message {
           Err(err) => Err(Error::System(err.to_string())),
           Ok(message) => {
-            let input: Input = serde_json::from_str(message.to_str().unwrap())?;
-            Ok(InputParcel::new(client_id, "".to_string(), input))
+            if message.is_text() {
+              let input: Input = serde_json::from_str(message.to_str().unwrap())?;
+              Ok(InputParcel::new(client_id, "".to_string(), input))
+            }
+            else if message.is_ping() {
+              Ok(InputParcel::new(client_id, "".to_string(), Input::Ping))
+            }
+            else {
+              Err(Error::System("UNDEFINED BEHAVIOR".to_string()))
+            }
           }
         })
   }

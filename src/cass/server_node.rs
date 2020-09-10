@@ -1,9 +1,9 @@
 use cassandra_cpp::*;
-use crate::cass::schema_loader::SchemaLoader;
-use crate::domain::repository::{RepositoryFactory, RepoKind};
 use std::cell::{RefCell, Ref};
 use std::borrow::{BorrowMut, Borrow};
 use tokio::sync::{Mutex, MutexGuard};
+
+use crate::cass::schema_loader::SchemaLoader;
 
 #[derive(Default)]
 pub struct ServerNode {
@@ -22,11 +22,11 @@ impl ServerNode {
         match self.init_session().await {
             Ok(ref mut session) => {
                 let schema_loader = SchemaLoader::new_with_session(session);
-                ServerNode::load_schema_from_file(&schema_loader, "cql/keyspace.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "cql/room.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "cql/user.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "cql/room_users.cql").await;
-                ServerNode::load_schema_from_file(&schema_loader, "cql/message.cql").await;
+                Self::load_schema_from_file(&schema_loader, "cql/keyspace.cql").await;
+                Self::load_schema_from_file(&schema_loader, "cql/room.cql").await;
+                Self::load_schema_from_file(&schema_loader, "cql/user.cql").await;
+                Self::load_schema_from_file(&schema_loader, "cql/room_users.cql").await;
+                Self::load_schema_from_file(&schema_loader, "cql/message.cql").await;
 
                 Ok(())
             },
@@ -34,7 +34,7 @@ impl ServerNode {
         }
     }
     
-    pub async fn init_session(&mut self) -> Result<Session> {
+    async fn init_session(&mut self) -> Result<Session> {
         self.cluster_instance.set_contact_points("127.0.0.1").unwrap();
         self.cluster_instance.set_load_balance_round_robin();
         
@@ -43,6 +43,20 @@ impl ServerNode {
         }
         
         self.cluster_instance.connect_async().await
+    }
+
+    pub fn build_cass_cluster() -> Result<Cluster> {
+        let mut cluster_instance = Cluster::default();
+        cluster_instance.set_contact_points("127.0.0.1").unwrap();
+        cluster_instance.set_load_balance_round_robin();
+
+        if let Err(error) = cluster_instance.set_protocol_version(4) {
+            println!("{:?}", error);
+            Err(error)
+        }
+        else {
+            Ok(cluster_instance)
+        }
     }
 
     async fn load_schema_from_file(schema_loader: &SchemaLoader, file_path: &str) {

@@ -44,9 +44,16 @@ impl UserStorage {
 
     async fn process(&self, input_parcel: InputParcel) {
         match input_parcel.input {
+            Input::Ping => self.send_pong(input_parcel.client_id),
             Input::LoadRooms(input) => self.load_rooms(input.user_id).await,
             _ => unimplemented!()
         }
+    }
+
+    fn send_pong(&self, user_id: Uuid) {
+        self.output_sender
+            .send(OutputParcel::new("".to_string(), user_id, Output::Pong))
+            .unwrap();
     }
 
     async fn load_rooms(&self, user_id: Uuid) {

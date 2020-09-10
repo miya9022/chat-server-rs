@@ -1,25 +1,22 @@
 use std::sync::Arc;
 use futures::StreamExt;
 use uuid::Uuid;
-use regex::Regex;
+// use regex::Regex;
 use std::collections::HashMap;
-use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::time::{self, Duration};
+use tokio::time::Duration;
 use tokio::sync::{broadcast, RwLock};
 use chrono::Utc;
 
 use crate::proto::*;
 use crate::model::{user::User, feed::Feed, message::Message};
 use crate::domain::repository::{UserRepository, MessageRepository};
-use std::borrow::{Borrow, BorrowMut};
-use std::ops::Deref;
 
 const OUTPUT_CHANNEL_SIZE: usize = 16;
 const MAX_MESSAGE_BODY_LENGTH: usize = 256;
 const DEFAULT_PAGE_SIZE: i32 = 15;
-lazy_static! {
-  static ref USER_NAME_REGEX: Regex = Regex::new("[A-Za-z\\s]{4,24}").unwrap();
-}
+// lazy_static! {
+//   static ref USER_NAME_REGEX: Regex = Regex::new("[A-Za-z\\s]{4,24}").unwrap();
+// }
 
 #[derive(Clone, Copy, Default)]
 pub struct HubOptions {
@@ -229,10 +226,10 @@ impl Hub {
     }
 
     // Validate username
-    if !USER_NAME_REGEX.is_match(user_name) {
-      self.send_error(room_id, client_id, OutputError::InvalidUserName);
-      return;
-    }
+    // if !USER_NAME_REGEX.is_match(user_name) {
+    //   self.send_error(room_id, client_id, OutputError::InvalidUserName);
+    //   return;
+    // }
 
     // Serve user information
     let user = User::new(client_id, user_name);
