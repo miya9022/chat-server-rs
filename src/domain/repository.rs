@@ -78,7 +78,7 @@ pub struct Utils {}
 
 impl Utils {
 
-    const SEPARATOR_CHARS: &'static str = "*&&*";
+    pub const SEPARATOR_CHARS: &'static str = "*&&*";
 
     pub fn from_uuid_to_cass_uuid(uuid: Uuid) -> cassandra_cpp::Uuid {
         cassandra_cpp::Uuid::from_str( uuid.to_string().as_str() ).ok().unwrap()
@@ -93,7 +93,7 @@ impl Utils {
         DateTime::from_utc(datetime, Utc)
     }
 
-    fn get_participants(participants: SetIterator) -> Option<Vec<User>> {
+    pub fn get_participants(participants: SetIterator) -> Option<Vec<User>> {
         Some(
             participants.map(|participant| {
                 let part_record = Result::ok(participant.get_string()).unwrap();
