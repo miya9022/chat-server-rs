@@ -9,9 +9,13 @@ use tokio::time;
 use crate::model::{room::Room, user::User};
 use crate::hub::{Hub, HubOptions};
 use crate::proto::*;
-use crate::domain::repository::{RoomRepository, RepositoryFactory, UserRepository, MessageRepository, RoomUserRepository};
 use crate::utils::AppUtils;
 use crate::model::room_user::RoomUser;
+use crate::domain::room_repository::RoomRepository;
+use crate::domain::user_repository::UserRepository;
+use crate::domain::message_repository::MessageRepository;
+use crate::domain::room_user_repository::RoomUserRepository;
+use crate::domain::repository::RepositoryFactory;
 
 const OUTPUT_CHANNEL_SIZE: usize = 256;
 

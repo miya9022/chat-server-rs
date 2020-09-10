@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use futures::StreamExt;
 use uuid::Uuid;
 // use regex::Regex;
 use std::collections::HashMap;
@@ -9,7 +8,8 @@ use chrono::Utc;
 
 use crate::proto::*;
 use crate::model::{user::User, feed::Feed, message::Message};
-use crate::domain::repository::{UserRepository, MessageRepository};
+use crate::domain::message_repository::MessageRepository;
+use crate::domain::user_repository::UserRepository;
 
 const OUTPUT_CHANNEL_SIZE: usize = 16;
 const MAX_MESSAGE_BODY_LENGTH: usize = 256;
