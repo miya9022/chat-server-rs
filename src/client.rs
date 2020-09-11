@@ -12,8 +12,8 @@ use std::str::FromStr;
 
 #[derive(Clone, Default)]
 pub struct RoomClient {
-  pub id: Uuid,
   pub room_id: String,
+  pub id: Uuid,
 }
 
 impl RoomClient {
@@ -70,7 +70,7 @@ impl RoomClient {
   {
     let room_id = self.room_id.clone();
     stream
-      // skip irrelevent parcels
+      // skip irrelevant parcels
       .try_filter(move |output_parcel| {
         future::ready(output_parcel.room_id == room_id)
       })

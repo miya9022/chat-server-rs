@@ -145,7 +145,9 @@ impl RoomRepository {
 
         match result.first_row() {
             None => None,
-            Some(row) => Self::bind_to_room(row)
+            Some(row) => {
+                Self::bind_to_room(row)
+            }
         }
     }
 

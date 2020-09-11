@@ -310,11 +310,10 @@ impl Hub {
     );
 
     // report post status
-    self.send_targeted(room_id, client_id, Output::Posted(PostedOutput::new(message_output.clone())));
+    // self.send_targeted(room_id, client_id, Output::Posted(PostedOutput::new(message_output.clone())));
 
     // notify everyone about new message
-    self.send_ignored(room_id, client_id, Output::UserPosted(UserPostedOutput::new(message_output)))
-    .await;
+    self.send_ignored(room_id, client_id, Output::UserPosted(UserPostedOutput::new(message_output))).await;
 
     // serve message
     self.msg_repo.add_new_message(room_id, message).await;

@@ -16,6 +16,7 @@ use crate::domain::user_repository::UserRepository;
 use crate::domain::message_repository::MessageRepository;
 use crate::domain::room_user_repository::RoomUserRepository;
 use crate::domain::repository::RepositoryFactory;
+use warp::filters::sse::retry;
 
 const OUTPUT_CHANNEL_SIZE: usize = 256;
 
@@ -72,34 +73,31 @@ impl RoomStorage {
   }
 
   async fn get_room(&self, room_id: &str) -> Option<Arc<Room>> {
-    {
+    if self.rooms.read().await.contains_key(room_id) {
       let rooms = self.rooms.read().await;
-      if let Some(room) = rooms.get(room_id) {
-        return Some(Arc::clone(room));
-      }
+      let room = rooms.get(room_id).unwrap();
+      Some(Arc::clone(room))
     }
-
-    {
-      match self.room_repository.load_one_room(room_id).await {
-        None => None,
-        Some(room) => {
-          self.insert_room(room_id, room.clone()).await
-        }
-      }
+    else if let Some(room) = self.room_repository.load_one_room(room_id).await {
+      self.rooms
+          .write()
+          .await
+          .insert(room_id.to_string(), Arc::new(room))
     }
-  }
-
-  async fn insert_room(&self, room_id: &str, room: Room) -> Option<Arc<Room>> {
-    let mut rooms = self.rooms.write().await;
-    rooms.insert(room_id.to_string(), Arc::new(room))
+    else {
+      None
+    }
   }
 
   async fn get_hub(&self, room_id: &str) -> Option<Arc<Hub>> {
-    let map = self.hubs.read().await;
-    if let Some(hub) = map.get(room_id) {
+    if !self.hubs.read().await.contains_key(room_id) {
+      let mut hubs = self.hubs.write().await;
+      hubs.insert(room_id.to_string(), self.new_hub())
+    }
+    else {
+      let hubs = self.hubs.read().await;
+      let hub = hubs.get(room_id).unwrap();
       Some(Arc::clone(hub))
-    } else {
-      None
     }
   }
 
@@ -126,11 +124,11 @@ impl RoomStorage {
   }
 
   pub async fn run(&self, receiver: UnboundedReceiver<InputParcel>) {
-    let ticking_alive = self.tick_alive();
+    // let ticking_alive = self.tick_alive();
     let processing = receiver.for_each(|input_parcel| self.process(input_parcel));
 
     tokio::select! {
-      _ = ticking_alive => {},
+      // _ = ticking_alive => {},
       _ = processing => {},
     }
   }
@@ -157,7 +155,6 @@ impl RoomStorage {
   }
 
   async fn load_room(&self, room_id: String) {
-    println!("{}", room_id);
 
     // check room exists
     if !self.rooms.read().await.contains_key(room_id.as_str()) &&
@@ -167,25 +164,16 @@ impl RoomStorage {
     }
 
     // get room instance
-    if let Some(room) = self.get_room(room_id.as_str()).await {
+    self.get_room(room_id.as_str()).await;
+    let room_read = self.rooms.read().await;
+    let room = room_read.get(room_id.as_str());
+    println!("{:?}", room);
 
-      // get hub instance
-      let hub: Option<Arc<Hub>> = match self.get_hub(room.room_id.as_str()).await {
-        Some(hub) => Some(hub),
-
-        // if hub hasn't exists yet, create a new one with room respectively
-        None => {
-          if let Some(hub) = self.hubs.write().await.insert(room_id.clone(), self.new_hub()) {
-            Some(hub)
-          }
-          else {
-            None
-          }
-        }
-      };
-
-      // hub notify all load user and load most recent messages
-      if let Some(hub) = hub {
+    // get hub instance
+    self.get_hub(room_id.as_str()).await;
+    match self.hubs.read().await.get(room_id.as_str()) {
+      None => {},
+      Some(hub) => {
         hub.process(
           InputParcel::new(Uuid::default(), room_id, Input::LoadRoom)
         ).await
@@ -317,49 +305,28 @@ impl RoomStorage {
 }
 
 
-// #[cfg(test)]
-// mod tests {
-//   use super::*;
-//
-//   macro_rules! aw {
-//       ($e:expr) => {
-//           tokio_test::block_on($e)
-//       };
-//   }
-//
-//   fn return_numb() -> i32 {
-//     let rwl = RwLock::new(5i32);
-//     {
-//       let mut numb = aw!(rwl.write());
-//       *numb += 1;
-//       println!("{}", *numb);
-//
-//       // let mut numb = aw!(rwl.write());
-//       *numb += 1;
-//       println!("{}", *numb);
-//
-//       // let mut numb = aw!(rwl.write());
-//       *numb += 1;
-//       println!("{}", *numb);
-//       return *numb;
-//     }
-//
-//     {
-//       let numb = aw!(rwl.read());
-//       println!("{}", *numb);
-//
-//       let numb = aw!(rwl.read());
-//       println!("{}", *numb);
-//
-//       let numb = aw!(rwl.read());
-//       println!("{}", *numb);
-//       *numb
-//     }
-//   }
-//
-//   #[test]
-//   fn test_rwlock() {
-//     let numb = return_numb();
-//     println!("{}", numb);
-//   }
-// }
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  macro_rules! aw {
+      ($e:expr) => {
+          tokio_test::block_on($e)
+      };
+  }
+
+  #[test]
+  fn test_rwlock() {
+    let numb = RwLock::new(5i32);
+
+    let num = aw!(numb.read()).abs();
+    println!("{}", num);
+
+    let mut num = aw!(numb.write());
+    *num += 5;
+    println!("{}", *num);
+
+    let num = aw!(numb.read());
+    println!("{}", *num);
+  }
+}

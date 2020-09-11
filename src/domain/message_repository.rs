@@ -31,7 +31,7 @@ impl MessageRepository {
     SELECT id, user_id, user_name, room_id, body, create_at \
     FROM chat_app.message \
     WHERE room_id = ? \
-    ORDER BY create_at DESC";
+    ALLOW FILTERING";
 
     const SELECT_ONE_QUERY: &'static str = "SELECT id, user_id, user_name, room_id, body, create_at FROM chat_app.message \
     WHERE id = ?";
