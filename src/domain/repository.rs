@@ -6,9 +6,9 @@ use async_trait::async_trait;
 use cassandra_cpp::*;
 use chrono::{NaiveDateTime, DateTime, Utc};
 use uuid::Uuid;
+use tokio::sync::Mutex;
 
 use crate::model::user::User;
-use tokio::sync::Mutex;
 use crate::domain::room_repository::RoomRepository;
 use crate::domain::room_user_repository::RoomUserRepository;
 use crate::domain::user_repository::UserRepository;

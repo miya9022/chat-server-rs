@@ -40,7 +40,7 @@ pub struct RoomInput {
   pub room_title: String,
   pub host_id: Uuid,
   pub host_name: String,
-  pub participants: Option<Vec<String>>,
+  pub participants: Option<Vec<UserOutput>>,
   pub delete_key: String,
 }
 

@@ -97,9 +97,9 @@ impl UserServer {
             });
 
         if let Err(err) = tokio::select! {
-      result = reading => result,
-      result = writing => result,
-    } {
+          result = reading => result,
+          result = writing => result,
+        } {
             error!("Client connection error: {}", err);
         }
     }
@@ -111,7 +111,7 @@ impl RoomServer {
           port,
           room_storage: Arc::new(RoomStorage::new(
             Some(HubOptions {
-              alive_interval: Some(Duration::from_secs(5)),
+              alive_interval: Some(Duration::from_secs(120)),
             }),
             &repo_fact
           )),

@@ -80,12 +80,15 @@ impl RoomStorage {
       match self.room_repository.load_one_room(room_id).await {
         None => None,
         Some(room) => {
-          let room = Arc::new(room);
-          self.rooms.write().await.insert(room_id.to_string(), room.clone());
-          Some(room)
+          self.insert_room(room_id, room.clone()).await
         }
       }
     }
+  }
+
+  async fn insert_room(&self, room_id: &str, room: Room) -> Option<Arc<Room>> {
+    let mut rooms = self.rooms.write().await;
+    rooms.insert(room_id.to_string(), Arc::new(room))
   }
 
   async fn get_hub(&self, room_id: &str) -> Option<Arc<Hub>> {
@@ -101,7 +104,7 @@ impl RoomStorage {
     self.output_sender.subscribe()
   }
 
-   async fn tick_alive(&self) {
+  async fn tick_alive(&self) {
     let alive_interval = if let Some(alive_interval) = self.hub_options.unwrap().alive_interval {
       alive_interval
     } else {
@@ -151,6 +154,7 @@ impl RoomStorage {
   }
 
   async fn load_room(&self, room_id: String) {
+    println!("{}", room_id);
 
     // check room exists
     if !self.rooms.read().await.contains_key(room_id.as_str()) &&
@@ -163,19 +167,26 @@ impl RoomStorage {
     if let Some(room) = self.get_room(room_id.as_str()).await {
 
       // get hub instance
-      let hub: Arc<Hub> = match self.get_hub(room.room_id.as_str()).await {
-        Some(hub) => hub,
+      let hub: Option<Arc<Hub>> = match self.get_hub(room.room_id.as_str()).await {
+        Some(hub) => Some(hub),
 
         // if hub hasn't exists yet, create a new one with room respectively
         None => {
-          self.hubs.write().await.insert(room_id.clone(), self.new_hub()).unwrap()
+          if let Some(hub) = self.hubs.write().await.insert(room_id.clone(), self.new_hub()) {
+            Some(hub)
+          }
+          else {
+            None
+          }
         }
       };
 
       // hub notify all load user and load most recent messages
-      hub.process(
-        InputParcel::new(Uuid::default(), room_id, Input::LoadRoom)
-      ).await
+      if let Some(hub) = hub {
+        hub.process(
+          InputParcel::new(Uuid::default(), room_id, Input::LoadRoom)
+        ).await
+      }
     }
   }
 
@@ -194,7 +205,7 @@ impl RoomStorage {
       .filter(|parts| !parts.is_empty())
       .map(|parts| {
         (*parts).iter()
-          .map(|part| User::new(Uuid::new_v4(), part))
+          .map(|part| User::new(part.id, part.name.as_str()))
           .collect()
       });
 
@@ -299,5 +310,24 @@ impl RoomStorage {
       .send(OutputParcel::new(String::from(room_id),
                               Default::default(), Output::Error(error)))
       .unwrap();
+  }
+}
+
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+  #[test]
+  fn test_rwlock() {
+    let rwl = RwLock::new(5i32);
+    let numb = aw!(rwl.read());
+    println!("{}", *numb);
   }
 }

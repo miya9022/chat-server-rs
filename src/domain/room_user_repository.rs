@@ -24,7 +24,7 @@ impl Repository for RoomUserRepository {
 impl RoomUserRepository {
     const INSERT_QUERY: &'static str = "INSERT INTO chat_app.room_users (room_id, user_id, room_title, create_at) VALUES(?, ?, ?, ?)";
 
-    const SELECT_BY_USER: &'static str = "SELECT room_id, user_id, room_title, create_at FROM chat_app.room_users WHERE user_id = ?";
+    const SELECT_BY_USER: &'static str = "SELECT room_id, user_id, room_title, create_at FROM chat_app.room_users WHERE user_id = ? ALLOW FILTERING";
 
     const DELETE_QUERY: &'static str = "DELETE FROM chat_app.room_users WHERE room_id = ? AND user_id = ?";
 
@@ -55,7 +55,7 @@ impl RoomUserRepository {
         let mut has_more_pages = true;
         let mut paging = page - 1;
 
-        let mut statement = Statement::new(Self::SELECT_BY_USER, 0);
+        let mut statement = Statement::new(Self::SELECT_BY_USER, 1);
         statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(user_id)).ok();
         statement.set_paging_size(size).ok();
 

@@ -32,12 +32,13 @@ impl UserRepository {
 
     const SELECT_PARTICIPANTS: &'static str = "SELECT participants FROM chat_app.room WHERE room_id = ?";
 
-    const SELECT_EXISTS_QUERY: &'static str = "SELECT COUNT(*) FROM chat_app.user WHERE id = ? OR name = ?";
+    const SELECT_EXISTS_QUERY: &'static str = "SELECT COUNT(*) FROM chat_app.user WHERE name = ? ALLOW FILTERING";
 
     const DELETE_QUERY: &'static str = "DELETE FROM chat_app.user WHERE id = ?";
 
     pub async fn create_user(&self, user: User) -> Option<User> {
         let persistent_user = user.clone();
+        println!("user info: {}, {}", user.id, user.name);
         if self.user_exists(user.clone()).await {
             println!("User has already exists");
             return None;
@@ -53,7 +54,6 @@ impl UserRepository {
         let result = session.execute(&statement).wait();
         match result {
             Ok(_) => {
-                session.close();
                 Some(user)
             },
             Err(error) => {
@@ -161,8 +161,8 @@ impl UserRepository {
 
     pub async fn user_exists(&self, user: User) -> bool {
         let mut statement = stmt!(Self::SELECT_EXISTS_QUERY);
-        statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(user.id)).ok();
-        statement.bind_string(1, user.name.as_str()).ok();
+        // statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(user.id)).ok();
+        statement.bind_string(0, user.name.as_str()).ok();
 
         let session = self.retrieve_session().await.unwrap();
         match session.execute(&statement).wait() {
@@ -175,7 +175,7 @@ impl UserRepository {
                     .first_row().unwrap()
                     .get_column(0).unwrap()
                     .get_i64().unwrap()
-                    > 0
+                > 0
             }
         }
     }

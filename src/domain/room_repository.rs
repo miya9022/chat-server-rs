@@ -23,17 +23,17 @@ impl Repository for RoomRepository {
 }
 
 impl RoomRepository {
-    const INSERT_QUERY: &'static str = "INSERT INTO chat_app.room (room_id, host_id, host_name, participants, create_at, delete_key) \
-    VALUES(?, ?, ?, ?, ?, ?)";
+    const INSERT_QUERY: &'static str = "INSERT INTO chat_app.room (room_id, room_title, host_id, host_name, participants, create_at, delete_key) \
+    VALUES(?, ?, ?, ?, ?, ?, ?)";
 
     const UPDATE_PARTICIPANTS_QUERY: &'static str = "UPDATE chat_app.room SET participants = ? WHERE room_id = ?";
 
-    const SELECT_ALL_QUERY: &'static str = "SELECT room_id, host_id, host_name, participants, create_at, delete_key FROM chat_app.room";
+    const SELECT_ALL_QUERY: &'static str = "SELECT room_id, room_title, host_id, host_name, participants, create_at, delete_key FROM chat_app.room";
 
-    const SELECT_ONE_QUERY: &'static str = "SELECT room_id, host_id, host_name, participants, create_at, delete_key FROM chat_app.room \
+    const SELECT_ONE_QUERY: &'static str = "SELECT room_id, room_title, host_id, host_name, participants, create_at, delete_key FROM chat_app.room \
     WHERE room_id = ?";
 
-    const SELECT_EXISTS_QUERY: &'static str = "SELECT COUNT(1) FROM chat_app.room WHERE room_id = ?";
+    const SELECT_EXISTS_QUERY: &'static str = "SELECT COUNT(*) FROM chat_app.room WHERE room_id = ?";
 
     const DELETE_QUERY: &'static str = "DELETE FROM chat_app.room WHERE room_id = ?";
 
@@ -43,14 +43,14 @@ impl RoomRepository {
         statement.bind_string(0, persistence_room.room_id.as_str()).ok();
         let host_id = cassandra_cpp::Uuid::from_str(
             persistence_room.host_info.id.to_string().as_str()
-        )
-            .ok().unwrap();
-        statement.bind_uuid(1, host_id).ok();
-        statement.bind_string(2, persistence_room.host_info.name.as_str()).ok();
+        ).ok().unwrap();
+        statement.bind_string(1, persistence_room.room_title.as_str()).ok();
+        statement.bind_uuid(2, host_id).ok();
+        statement.bind_string(3, persistence_room.host_info.name.as_str()).ok();
 
         let participants_set = match persistence_room.participants {
             Some(participants) => {
-                let mut set = Set::new_from_data_type(DataType::new(ValueType::VARCHAR), participants.len());
+                let mut set = Set::new(participants.len());
                 for item in participants {
                     let value = item.id.to_string() + Utils::SEPARATOR_CHARS + item.name.as_str();
                     match set.append_string(value.as_str()) {
@@ -66,9 +66,9 @@ impl RoomRepository {
             }
             None => Set::new_from_data_type(DataType::new(ValueType::VARCHAR), 0),
         };
-        statement.bind_set(3, participants_set).ok();
-        statement.bind_int64(4, persistence_room.create_at.timestamp()).ok();
-        statement.bind_string(5, persistence_room.delete_key.as_str()).ok();
+        statement.bind_set(4, participants_set).ok();
+        statement.bind_int64(5, persistence_room.create_at.timestamp()).ok();
+        statement.bind_string(6, persistence_room.delete_key.as_str()).ok();
 
         let session = self.retrieve_session().await.unwrap();
         let result = session.execute(&statement).wait();
@@ -184,9 +184,9 @@ impl RoomRepository {
     }
 
     fn bind_to_room(row: Row) -> Option<Room> {
-        let host_id: cassandra_cpp::Uuid = Result::ok(row.get(1)).unwrap();
-        let participants: SetIterator = Result::ok(row.get(3)).unwrap();
-        let create_at: i64 = Result::ok(row.get(4)).unwrap();
+        let host_id: cassandra_cpp::Uuid = Result::ok(row.get(2)).unwrap();
+        let participants: SetIterator = Result::ok(row.get(4)).unwrap();
+        let create_at: i64 = Result::ok(row.get(5)).unwrap();
         let create_at = NaiveDateTime::from_timestamp(create_at, 0);
         let create_at = DateTime::from_utc(create_at, Utc);
 
@@ -195,11 +195,11 @@ impl RoomRepository {
             room_title: Result::ok( row.get(1)).unwrap(),
             host_info: User {
                 id: Uuid::from_str(host_id.to_string().as_str()).unwrap(),
-                name: Result::ok(row.get(2)).unwrap(),
+                name: Result::ok(row.get(3)).unwrap(),
             },
             participants: Utils::get_participants(participants),
             create_at,
-            delete_key: Result::ok(row.get(5)).unwrap(),
+            delete_key: Result::ok(row.get(6)).unwrap(),
         })
     }
 }

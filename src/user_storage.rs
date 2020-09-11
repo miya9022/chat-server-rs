@@ -59,7 +59,7 @@ impl UserStorage {
     }
 
     async fn load_rooms(&self, user_id: Uuid) {
-        let result = self.room_user_repo.load_by_userid(user_id, 0, 10).await
+        let result = self.room_user_repo.load_by_userid(user_id, 1, 10).await
                     .as_ref()
                     .map(|rooms|
                         rooms

@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS chat_app.room (
     room_title varchar,
     host_id UUID,
     host_name varchar,
-    participants set<varchar>,
+    participants set<text>,
     create_at bigint,
     delete_key varchar,
 );
