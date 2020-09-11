@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use cassandra_cpp::*;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 use tokio::sync::Mutex;
 
