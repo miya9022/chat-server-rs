@@ -72,11 +72,14 @@ impl RoomStorage {
   }
 
   async fn get_room(&self, room_id: &str) -> Option<Arc<Room>> {
-    let map = self.rooms.read().await;
-    if let Some(room) = map.get(room_id) {
-      Some(Arc::clone(room))
+    {
+      let rooms = self.rooms.read().await;
+      if let Some(room) = rooms.get(room_id) {
+        return Some(Arc::clone(room));
+      }
     }
-    else {
+
+    {
       match self.room_repository.load_one_room(room_id).await {
         None => None,
         Some(room) => {
@@ -314,20 +317,49 @@ impl RoomStorage {
 }
 
 
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  macro_rules! aw {
-        ($e:expr) => {
-            tokio_test::block_on($e)
-        };
-    }
-
-  #[test]
-  fn test_rwlock() {
-    let rwl = RwLock::new(5i32);
-    let numb = aw!(rwl.read());
-    println!("{}", *numb);
-  }
-}
+// #[cfg(test)]
+// mod tests {
+//   use super::*;
+//
+//   macro_rules! aw {
+//       ($e:expr) => {
+//           tokio_test::block_on($e)
+//       };
+//   }
+//
+//   fn return_numb() -> i32 {
+//     let rwl = RwLock::new(5i32);
+//     {
+//       let mut numb = aw!(rwl.write());
+//       *numb += 1;
+//       println!("{}", *numb);
+//
+//       // let mut numb = aw!(rwl.write());
+//       *numb += 1;
+//       println!("{}", *numb);
+//
+//       // let mut numb = aw!(rwl.write());
+//       *numb += 1;
+//       println!("{}", *numb);
+//       return *numb;
+//     }
+//
+//     {
+//       let numb = aw!(rwl.read());
+//       println!("{}", *numb);
+//
+//       let numb = aw!(rwl.read());
+//       println!("{}", *numb);
+//
+//       let numb = aw!(rwl.read());
+//       println!("{}", *numb);
+//       *numb
+//     }
+//   }
+//
+//   #[test]
+//   fn test_rwlock() {
+//     let numb = return_numb();
+//     println!("{}", numb);
+//   }
+// }
