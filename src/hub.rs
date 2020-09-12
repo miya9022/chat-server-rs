@@ -11,7 +11,7 @@ use crate::model::{user::User, feed::Feed, message::Message};
 use crate::domain::message_repository::MessageRepository;
 use crate::domain::user_repository::UserRepository;
 
-const OUTPUT_CHANNEL_SIZE: usize = 16;
+// const OUTPUT_CHANNEL_SIZE: usize = 16;
 const MAX_MESSAGE_BODY_LENGTH: usize = 256;
 const DEFAULT_PAGE_SIZE: i32 = 15;
 // lazy_static! {
@@ -24,7 +24,6 @@ pub struct HubOptions {
 }
 
 pub struct Hub {
-  alive_interval: Option<Duration>,
   output_sender: broadcast::Sender<OutputParcel>,
   users: RwLock<HashMap<Uuid, User>>,
   feed: RwLock<Feed>,
@@ -34,11 +33,10 @@ pub struct Hub {
 }
 
 impl Hub {
-  pub fn new(options: HubOptions, output_sender: broadcast::Sender<OutputParcel>,
+  pub fn new(output_sender: broadcast::Sender<OutputParcel>,
              user_repo: Arc<UserRepository>, msg_repo: Arc<MessageRepository>) -> Self {
     // let (output_sender, _) = broadcast::channel(OUTPUT_CHANNEL_SIZE);
     Hub {
-      alive_interval: options.alive_interval,
       output_sender,
       users: Default::default(),
       feed: Default::default(),
@@ -310,10 +308,10 @@ impl Hub {
     );
 
     // report post status
-    // self.send_targeted(room_id, client_id, Output::Posted(PostedOutput::new(message_output.clone())));
+    self.send_targeted(room_id, client_id, Output::Posted(PostedOutput::new(message_output.clone())));
 
     // notify everyone about new message
-    self.send_ignored(room_id, client_id, Output::UserPosted(UserPostedOutput::new(message_output))).await;
+    // self.send_ignored(room_id, client_id, Output::UserPosted(UserPostedOutput::new(message_output))).await;
 
     // serve message
     self.msg_repo.add_new_message(room_id, message).await;

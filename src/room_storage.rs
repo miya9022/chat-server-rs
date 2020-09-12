@@ -16,7 +16,6 @@ use crate::domain::user_repository::UserRepository;
 use crate::domain::message_repository::MessageRepository;
 use crate::domain::room_user_repository::RoomUserRepository;
 use crate::domain::repository::RepositoryFactory;
-use warp::filters::sse::retry;
 
 const OUTPUT_CHANNEL_SIZE: usize = 256;
 
@@ -24,7 +23,7 @@ pub struct RoomStorage {
   output_sender: broadcast::Sender<OutputParcel>,
   rooms: RwLock<HashMap<String, Arc<Room>>>,
   hubs: RwLock<HashMap<String, Arc<Hub>>>,
-  hub_options: Option<HubOptions>,
+  // hub_options: Option<HubOptions>,
 
   room_repository: Arc<RoomRepository>,
   user_repository: Arc<UserRepository>,
@@ -33,7 +32,7 @@ pub struct RoomStorage {
 }
 
 impl RoomStorage {
-  pub fn new(hub_options: Option<HubOptions>, repo_fact: &RepositoryFactory) -> Self {
+  pub fn new(repo_fact: &RepositoryFactory) -> Self {
     let (output_sender, _) = broadcast::channel(OUTPUT_CHANNEL_SIZE);
 
     let room_repository = match AppUtils::downcast_arc::<RoomRepository>(
@@ -64,7 +63,7 @@ impl RoomStorage {
       output_sender,
       rooms: Default::default(),
       hubs: Default::default(),
-      hub_options,
+      // hub_options,
       room_repository,
       user_repository,
       message_repository,
@@ -105,23 +104,23 @@ impl RoomStorage {
     self.output_sender.subscribe()
   }
 
-  async fn tick_alive(&self) {
-    let alive_interval = if let Some(alive_interval) = self.hub_options.unwrap().alive_interval {
-      alive_interval
-    } else {
-      return;
-    };
-
-    loop {
-      time::delay_for(alive_interval).await;
-      self.rooms.read().await.keys().for_each(|room_id| {
-        self.output_sender
-          .send(OutputParcel::new(
-            String::from(room_id), Default::default(), Output::Alive))
-          .unwrap();
-      })
-    }
-  }
+  // async fn tick_alive(&self) {
+  //   let alive_interval = if let Some(alive_interval) = self.hub_options.unwrap().alive_interval {
+  //     alive_interval
+  //   } else {
+  //     return;
+  //   };
+  //
+  //   loop {
+  //     time::delay_for(alive_interval).await;
+  //     self.rooms.read().await.keys().for_each(|room_id| {
+  //       self.output_sender
+  //         .send(OutputParcel::new(
+  //           String::from(room_id), Default::default(), Output::Alive))
+  //         .unwrap();
+  //     })
+  //   }
+  // }
 
   pub async fn run(&self, receiver: UnboundedReceiver<InputParcel>) {
     // let ticking_alive = self.tick_alive();
@@ -166,8 +165,8 @@ impl RoomStorage {
     // get room instance
     self.get_room(room_id.as_str()).await;
     let room_read = self.rooms.read().await;
-    let room = room_read.get(room_id.as_str());
-    println!("{:?}", room);
+    let _ = room_read.get(room_id.as_str());
+    // println!("{:?}", room);
 
     // get hub instance
     self.get_hub(room_id.as_str()).await;
@@ -205,7 +204,7 @@ impl RoomStorage {
     self.rooms.write().await.insert(room_id.clone(), Arc::new(room.clone()));
 
     // create Hub
-    let hub = Hub::new(self.hub_options.unwrap(), self.output_sender.clone(),
+    let hub = Hub::new(self.output_sender.clone(),
                        Arc::clone(&self.user_repository), Arc::clone(&self.message_repository));
 
     // invite host
@@ -291,7 +290,7 @@ impl RoomStorage {
 
   fn new_hub(&self) -> Arc<Hub> {
     Arc::new(
-      Hub::new(self.hub_options.unwrap(), self.output_sender.clone(),
+      Hub::new(self.output_sender.clone(),
              Arc::clone(&self.user_repository), Arc::clone(&self.message_repository))
     )
   }

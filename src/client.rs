@@ -77,6 +77,7 @@ impl RoomClient {
       // serialize to JSON
       .map_ok(|output_parcel| {
         let data = serde_json::to_string(&output_parcel.output).unwrap();
+        // println!("{}", data);
         warp::ws::Message::text(data)
       })
       .map_err(|err| Error::System(err.to_string()))

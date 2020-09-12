@@ -109,12 +109,7 @@ impl RoomServer {
   pub fn new(port: u16, repo_fact: RepositoryFactory) -> Self {
       RoomServer {
           port,
-          room_storage: Arc::new(RoomStorage::new(
-            Some(HubOptions {
-              alive_interval: Some(Duration::from_secs(120)),
-            }),
-            &repo_fact
-          )),
+          room_storage: Arc::new(RoomStorage::new(&repo_fact)),
     }
   }
 
