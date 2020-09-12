@@ -9,6 +9,7 @@ pub struct Room {
   pub host_info: User,
   pub participants: Option<Vec<User>>,
   pub create_at: DateTime<Utc>,
+  pub scope: String,
   pub delete_key: String,
 }
 
@@ -20,6 +21,7 @@ impl Room {
     host_name: String, 
     participants: Option<Vec<User>>, 
     create_at: DateTime<Utc>,
+    scope: String,
     delete_key: String,
   ) -> Self {
     Room {
@@ -28,6 +30,7 @@ impl Room {
       host_info: User::new(host_id, host_name.as_str()),
       participants,
       create_at,
+      scope,
       delete_key
     }
   }

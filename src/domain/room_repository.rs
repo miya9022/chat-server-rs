@@ -23,14 +23,14 @@ impl Repository for RoomRepository {
 }
 
 impl RoomRepository {
-    const INSERT_QUERY: &'static str = "INSERT INTO chat_app.room (room_id, room_title, host_id, host_name, participants, create_at, delete_key) \
-    VALUES(?, ?, ?, ?, ?, ?, ?)";
+    const INSERT_QUERY: &'static str = "INSERT INTO chat_app.room (room_id, room_title, host_id, host_name, participants, create_at, scope, delete_key) \
+    VALUES(?, ?, ?, ?, ?, ?, ?, ?)";
 
     const UPDATE_PARTICIPANTS_QUERY: &'static str = "UPDATE chat_app.room SET participants = ? WHERE room_id = ?";
 
-    const SELECT_ALL_QUERY: &'static str = "SELECT room_id, room_title, host_id, host_name, participants, create_at, delete_key FROM chat_app.room";
+    const SELECT_ALL_QUERY: &'static str = "SELECT room_id, room_title, host_id, host_name, participants, create_at, scope, delete_key FROM chat_app.room";
 
-    const SELECT_ONE_QUERY: &'static str = "SELECT room_id, room_title, host_id, host_name, participants, create_at, delete_key FROM chat_app.room \
+    const SELECT_ONE_QUERY: &'static str = "SELECT room_id, room_title, host_id, host_name, participants, create_at, scope, delete_key FROM chat_app.room \
     WHERE room_id = ?";
 
     const SELECT_EXISTS_QUERY: &'static str = "SELECT COUNT(*) FROM chat_app.room WHERE room_id = ?";
@@ -68,7 +68,8 @@ impl RoomRepository {
         };
         statement.bind_set(4, participants_set).ok();
         statement.bind_int64(5, persistence_room.create_at.timestamp()).ok();
-        statement.bind_string(6, persistence_room.delete_key.as_str()).ok();
+        statement.bind_string(6, persistence_room.scope.as_str()).ok();
+        statement.bind_string(7, persistence_room.delete_key.as_str()).ok();
 
         let session = self.retrieve_session().await.unwrap();
         let result = session.execute(&statement).wait();
@@ -114,11 +115,11 @@ impl RoomRepository {
             Err(_) => vec!(),
             Ok(cass_result) => {
                 cass_result.iter().map(|row| {
-                    let participants: SetIterator = Result::ok(row.get(3)).unwrap();
+                    let participants: SetIterator = Result::ok(row.get(4)).unwrap();
                     let participants = Utils::get_participants(participants);
 
-                    let host_id: cassandra_cpp::Uuid = Result::ok(row.get(1)).unwrap();
-                    let create_at: i64 = Result::ok(row.get(4)).unwrap();
+                    let host_id: cassandra_cpp::Uuid = Result::ok(row.get(2)).unwrap();
+                    let create_at: i64 = Result::ok(row.get(5)).unwrap();
                     let create_at = NaiveDateTime::from_timestamp(create_at, 0);
                     let create_at = DateTime::from_utc(create_at, Utc);
                     Room {
@@ -126,11 +127,12 @@ impl RoomRepository {
                         room_title: Result::ok(row.get(1)).unwrap(),
                         host_info: User {
                             id: Utils::from_cass_uuid_to_uuid(host_id),
-                            name: Result::ok(row.get(2)).unwrap(),
+                            name: Result::ok(row.get(3)).unwrap(),
                         },
                         participants,
                         create_at,
-                        delete_key: Result::ok(row.get(5)).unwrap(),
+                        scope: Result::ok( row.get(6) ).unwrap(),
+                        delete_key: Result::ok(row.get(7)).unwrap(),
                     }
                 }).collect()
             }
@@ -201,7 +203,8 @@ impl RoomRepository {
             },
             participants: Utils::get_participants(participants),
             create_at,
-            delete_key: Result::ok(row.get(6)).unwrap(),
+            scope: Result::ok( row.get(6) ).unwrap(),
+            delete_key: Result::ok(row.get(7) ).unwrap(),
         })
     }
 }
