@@ -1,7 +1,4 @@
 use cassandra_cpp::*;
-use std::cell::{RefCell, Ref};
-use std::borrow::{BorrowMut, Borrow};
-use tokio::sync::{Mutex, MutexGuard};
 
 use crate::cass::schema_loader::SchemaLoader;
 

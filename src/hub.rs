@@ -4,12 +4,14 @@ use uuid::Uuid;
 use std::collections::HashMap;
 use tokio::time::Duration;
 use tokio::sync::{broadcast, RwLock};
-use chrono::Utc;
+// use chrono::Utc;
 
 use crate::proto::*;
 use crate::model::{user::User, feed::Feed, message::Message};
 use crate::domain::message_repository::MessageRepository;
 use crate::domain::user_repository::UserRepository;
+use crate::domain::room_user_repository::RoomUserRepository;
+use crate::model::room_user::RoomUser;
 
 // const OUTPUT_CHANNEL_SIZE: usize = 16;
 const MAX_MESSAGE_BODY_LENGTH: usize = 256;
@@ -30,11 +32,14 @@ pub struct Hub {
 
   user_repo: Arc<UserRepository>,
   msg_repo: Arc<MessageRepository>,
+  room_user_repo: Arc<RoomUserRepository>,
 }
 
 impl Hub {
   pub fn new(output_sender: broadcast::Sender<OutputParcel>,
-             user_repo: Arc<UserRepository>, msg_repo: Arc<MessageRepository>) -> Self {
+             user_repo: Arc<UserRepository>,
+             msg_repo: Arc<MessageRepository>,
+             room_user_repo: Arc<RoomUserRepository>) -> Self {
     // let (output_sender, _) = broadcast::channel(OUTPUT_CHANNEL_SIZE);
     Hub {
       output_sender,
@@ -42,6 +47,7 @@ impl Hub {
       feed: Default::default(),
       user_repo,
       msg_repo,
+      room_user_repo,
     }
   }
 
@@ -126,27 +132,48 @@ impl Hub {
   //     _ = processing => {},
   //   }
   // }
+
+  async fn load_room_user_except(&self, room_id: &str, from_id: Uuid) -> Option<RoomUser> {
+    if let Some(users) = self.room_user_repo.load_by_room(room_id.to_string()).await {
+      users.into_iter()
+          .filter(|user| user.user_id != from_id)
+          .last()
+    }
+    else {
+      None
+    }
+  }
   
   pub async fn process(&self, input_parcel: InputParcel) {
     match input_parcel.input {
-      Input::LoadRoom => self.process_load(input_parcel.room_id.as_str()).await,
+      Input::LoadRoom(input) => self.process_load(input_parcel.room_id.as_str(), input).await,
       Input::JoinRoom(input) => self.process_join(input_parcel.room_id.as_str(), input_parcel.client_id, input).await,
       Input::PostMessage(input) => self.process_post(input_parcel.room_id.as_str(), input_parcel.client_id, input).await,
       _ => unimplemented!(),
     }
   }
 
-  async fn process_load(&self, room_id: &str) {
+  async fn process_load(&self, room_id: &str, load_room_input: LoadRoomInput) {
 
     // load messages
     if self.feed.read().await.is_empty() {
 
-      // if feed is empty, let check db and insert to feed if present
-      if let Some(msgs) = self.msg_repo.load_messages_by_room(room_id, 1, DEFAULT_PAGE_SIZE).await {
-        let mut feed_write = self.feed.write().await;
-        msgs.iter().for_each(|msg| {
-          feed_write.add_message(msg.clone());
-        });
+      // if feed empty, get to user from db
+      if let Some(to_user) = self.load_room_user_except(room_id, load_room_input.from_id).await {
+        let from_id = load_room_input.from_id;
+        let to_id = to_user.user_id;
+
+        // let check db and insert to feed if present
+        if let Some(msgs) = self.msg_repo
+            .load_messages_by_room(room_id, from_id, to_id, 1, DEFAULT_PAGE_SIZE).await {
+          let mut feed_write = self.feed.write().await;
+          msgs.iter().for_each(|msg| {
+            feed_write.add_message(msg.clone());
+          });
+        }
+      }
+      else {
+        return;
       }
     }
 
@@ -180,11 +207,10 @@ impl Hub {
           MessageOutput {
             id: msg.id,
             user: UserOutput {
-              id: msg.user.id,
-              name: msg.user.name
+              id: msg.from.id,
+              name: msg.from.name
             },
             body: msg.body,
-            created_at: msg.created_at
           }
         })
         .collect();
@@ -257,9 +283,9 @@ impl Hub {
       .map(|message| {
         MessageOutput::new(
           message.id,
-          UserOutput::new(message.user.id, &message.user.name),
+          UserOutput::new(message.from.id, &message.from.name),
           &message.body,
-          message.created_at,
+          // message.created_at,
         )
       })
       .collect();
@@ -299,21 +325,24 @@ impl Hub {
     }
 
     // Add new message to feed
-    let message = Message::new(Uuid::new_v4(), user.clone(), &input.body, Utc::now());
-    self.feed.write().await.add_message(message.clone());
+    if let Some(to_user) = self.load_room_user_except(room_id, client_id).await {
+      let message = Message::new(
+        user.clone(), User::new(to_user.user_id, to_user.username.as_str()), room_id, &input.body);
+      self.feed.write().await.add_message(message.clone());
 
-    // report send message success
-    let message_output = MessageOutput::new(
-      message.id, UserOutput::new(user.id, &user.name), &message.body, message.created_at
-    );
+      // report send message success
+      let message_output = MessageOutput::new(
+        message.id, UserOutput::new(user.id, &user.name), &message.body
+      );
 
-    // report post status
-    self.send_targeted(room_id, client_id, Output::Posted(PostedOutput::new(message_output.clone())));
+      // report post status
+      self.send_targeted(room_id, client_id, Output::Posted(PostedOutput::new(message_output.clone())));
 
-    // notify everyone about new message
-    // self.send_ignored(room_id, client_id, Output::UserPosted(UserPostedOutput::new(message_output))).await;
+      // notify everyone about new message
+      // self.send_ignored(room_id, client_id, Output::UserPosted(UserPostedOutput::new(message_output))).await;
 
-    // serve message
-    self.msg_repo.add_new_message(room_id, message).await;
+      // serve message
+      self.msg_repo.add_new_message(room_id, message).await;
+    }
   }
 }

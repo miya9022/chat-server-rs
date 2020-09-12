@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use async_trait::async_trait;
 use cassandra_cpp::*;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use uuid::Uuid;
 use tokio::sync::Mutex;
 

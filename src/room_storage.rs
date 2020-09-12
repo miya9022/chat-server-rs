@@ -4,18 +4,17 @@ use futures::StreamExt;
 use uuid::Uuid;
 use chrono::Utc;
 use tokio::sync::{ RwLock, broadcast, mpsc::UnboundedReceiver };
-use tokio::time;
 
-use crate::model::{room::Room, user::User};
-use crate::hub::{Hub, HubOptions};
-use crate::proto::*;
-use crate::utils::AppUtils;
-use crate::model::room_user::RoomUser;
 use crate::domain::room_repository::RoomRepository;
 use crate::domain::user_repository::UserRepository;
 use crate::domain::message_repository::MessageRepository;
 use crate::domain::room_user_repository::RoomUserRepository;
 use crate::domain::repository::RepositoryFactory;
+use crate::model::{room::Room, user::User};
+use crate::model::room_user::RoomUser;
+use crate::hub::Hub;
+use crate::proto::*;
+use crate::utils::AppUtils;
 
 const OUTPUT_CHANNEL_SIZE: usize = 256;
 
@@ -135,7 +134,7 @@ impl RoomStorage {
   async fn process(&self, input_parcel: InputParcel) {
     match input_parcel.input {
       Input::Ping => self.send_pong(input_parcel),
-      Input::LoadRoom => self.load_room(input_parcel.room_id).await,
+      Input::LoadRoom(input) => self.load_room(input_parcel.room_id, input).await,
       Input::CreateRoom(room_input) => self.create_room(input_parcel.room_id, room_input).await,
       Input::DeleteRoom(remove_room_input) => self.delete_room(remove_room_input).await,
       _ => match self.get_hub(input_parcel.room_id.as_str()).await {
@@ -153,7 +152,7 @@ impl RoomStorage {
         .unwrap();
   }
 
-  async fn load_room(&self, room_id: String) {
+  async fn load_room(&self, room_id: String, input: LoadRoomInput) {
 
     // check room exists
     if !self.rooms.read().await.contains_key(room_id.as_str()) &&
@@ -174,7 +173,7 @@ impl RoomStorage {
       None => {},
       Some(hub) => {
         hub.process(
-          InputParcel::new(Uuid::default(), room_id, Input::LoadRoom)
+          InputParcel::new(Uuid::default(), room_id, Input::LoadRoom(input))
         ).await
       }
     }
@@ -205,7 +204,9 @@ impl RoomStorage {
 
     // create Hub
     let hub = Hub::new(self.output_sender.clone(),
-                       Arc::clone(&self.user_repository), Arc::clone(&self.message_repository));
+                       Arc::clone(&self.user_repository),
+                       Arc::clone(&self.message_repository),
+                       Arc::clone(&self.room_user_repository));
 
     // invite host
     let host_input = InputParcel::new(input.host_id, room_id.clone(),
@@ -246,6 +247,7 @@ impl RoomStorage {
           room.room_id.clone(),
           room.room_title.clone(),
           user.id,
+          user.name,
           room.create_at,
         );
         self.room_user_repository.create_room_users(room_user).await;
@@ -291,7 +293,9 @@ impl RoomStorage {
   fn new_hub(&self) -> Arc<Hub> {
     Arc::new(
       Hub::new(self.output_sender.clone(),
-             Arc::clone(&self.user_repository), Arc::clone(&self.message_repository))
+             Arc::clone(&self.user_repository),
+               Arc::clone(&self.message_repository),
+               Arc::clone(&self.room_user_repository) )
     )
   }
 

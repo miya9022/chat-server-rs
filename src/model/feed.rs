@@ -9,8 +9,6 @@ pub struct Feed {
 impl Feed {
   pub fn add_message(&mut self, message: Message) {
     self.messages.push(message);
-    self.messages.sort_by_key(|message| message.created_at);
-
     self.size += 1;
   }
 
@@ -19,6 +17,6 @@ impl Feed {
   }
 
   pub fn is_empty(&self) -> bool {
-    self.size <= 0
+    self.size == 0
   }
 }

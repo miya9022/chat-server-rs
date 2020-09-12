@@ -21,33 +21,45 @@ impl Repository for MessageRepository {
 }
 
 impl MessageRepository {
-    const INSERT_QUERY: &'static str = "INSERT INTO chat_app.message (id, user_id, user_name, room_id, body, create_at) \
-    VALUES(?, ?, ?, ?, ?, ?)";
+    const INSERT_QUERY: &'static str = "INSERT INTO chat_app.message \
+    (id, from_id, from_name, to_id, to_name, room_id, body) \
+    VALUES \
+    (now(), ?, ?, ?, ?, ?, ?)";
 
-    const UPDATE_BODY_QUERY: &'static str = "UPDATE chat_app.message SET body = ? WHERE id = ?";
+    const UPDATE_BODY_QUERY: &'static str = "UPDATE chat_app.message SET body = ? WHERE \
+      id = ? AND \
+      from_id = ? AND \
+      to_id = ?";
 
     const SELECT_ALL_BY_ROOM_ID_QUERY: &'static str = "\
-    SELECT id, user_id, user_name, room_id, body, create_at \
+    SELECT id, from_id, from_name, to_id, to_name, room_id, body \
     FROM chat_app.message \
-    WHERE room_id = ? \
+    WHERE from_id = ? \
+      AND to_id = ? \
+      AND room_id = ? \
     ALLOW FILTERING";
 
-    const SELECT_ONE_QUERY: &'static str = "SELECT id, user_id, user_name, room_id, body, create_at FROM chat_app.message \
-    WHERE id = ?";
+    const SELECT_ONE_QUERY: &'static str = "\
+    SELECT id, from_id, from_name, to_id, to_name, room_id, body \
+    FROM chat_app.message \
+    WHERE id = ? ALLOW FILTERING";
 
-    const SELECT_EXIST_QUERY: &'static str = "SELECT COUNT(*) FROM chat_app.message WHERE id = ?";
+    const SELECT_EXIST_QUERY: &'static str = "SELECT COUNT(*) FROM chat_app.message WHERE id = ? ALLOW FILTERING";
 
-    const DELETE_QUERY: &'static str = "DELETE FROM chat_app.message WHERE id = ?";
+    const DELETE_QUERY: &'static str = "DELETE FROM chat_app.message WHERE \
+      id = ? AND \
+      from_id = ? AND \
+      to_id = ?";
 
     pub async fn add_new_message(&self, room_id: &str, message: Message) -> Option<Message> {
         let persistent_msg = message.clone();
         let mut statement = stmt!(Self::INSERT_QUERY);
-        statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(persistent_msg.id) ).ok();
-        statement.bind_uuid(1, Utils::from_uuid_to_cass_uuid(persistent_msg.user.id)).ok();
-        statement.bind_string(2, persistent_msg.user.name.as_str()).ok();
-        statement.bind_string(3, room_id).ok();
-        statement.bind_string(4, persistent_msg.body.as_str()).ok();
-        statement.bind_int64(5, persistent_msg.created_at.timestamp()).ok();
+        statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(persistent_msg.from.id)).ok();
+        statement.bind_string(1, persistent_msg.from.name.as_str()).ok();
+        statement.bind_uuid(2, Utils::from_uuid_to_cass_uuid(persistent_msg.to.id)).ok();
+        statement.bind_string(3, persistent_msg.to.name.as_str()).ok();
+        statement.bind_string(4, room_id).ok();
+        statement.bind_string(5, persistent_msg.body.as_str()).ok();
 
         let session = self.retrieve_session().await.unwrap();
         let result = session.execute(&statement).wait();
@@ -60,16 +72,17 @@ impl MessageRepository {
         }
     }
 
-    pub async fn update_message_body(&self, msg_id: Uuid, body: &str) -> Option<Message> {
+    pub async fn update_message_body(&self, msg_id: Uuid, from_id: Uuid, to_id: Uuid, body: &str) -> Option<Message> {
         if !self.check_message_exists(msg_id).await {
             println!("message doesn't exists");
             return None;
         }
 
-        let message_id = Utils::from_uuid_to_cass_uuid(msg_id);
         let mut statement = stmt!(Self::UPDATE_BODY_QUERY);
         statement.bind_string(0, body).ok();
-        statement.bind_uuid(1, message_id).ok();
+        statement.bind_uuid(1, Utils::from_uuid_to_cass_uuid(msg_id)).ok();
+        statement.bind_uuid(2, Utils::from_uuid_to_cass_uuid(from_id)).ok();
+        statement.bind_uuid(3, Utils::from_uuid_to_cass_uuid(to_id)).ok();
 
         let session = self.retrieve_session().await.unwrap();
         match session.execute(&statement).wait() {
@@ -81,13 +94,15 @@ impl MessageRepository {
         }
     }
 
-    pub async fn load_messages_by_room(&self, room_id: &str, page: i32, size: i32) -> Option<Vec<Message>> {
+    pub async fn load_messages_by_room(&self, room_id: &str, from_id: Uuid, to_id: Uuid, page: i32, size: i32) -> Option<Vec<Message>> {
         let mut res = Vec::<Message>::new();
 
         let mut statement = stmt!(Self::SELECT_ALL_BY_ROOM_ID_QUERY);
-        statement.bind_string(0, room_id).ok();
+        statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(from_id)).ok();
+        statement.bind_uuid(1, Utils::from_uuid_to_cass_uuid(to_id)).ok();
+        statement.bind_string(2, room_id).ok();
         statement.set_paging_size(size).ok();
-        let mut has_more_pages = false;
+        let mut has_more_pages = true;
         let mut paging = page - 1;
 
         let session = self.retrieve_session().await.unwrap();
@@ -153,10 +168,12 @@ impl MessageRepository {
         }
     }
 
-    pub async fn delete_message(&self, msg_id: Uuid) -> Result<()> {
+    pub async fn delete_message(&self, msg_id: Uuid, from_id: Uuid, to_id: Uuid) -> Result<()> {
         let msg_id = Utils::from_uuid_to_cass_uuid(msg_id);
         let mut statement = stmt!(Self::DELETE_QUERY);
         statement.bind_uuid(0, msg_id).ok();
+        statement.bind_uuid(1, Utils::from_uuid_to_cass_uuid(from_id)).ok();
+        statement.bind_uuid(2, Utils::from_uuid_to_cass_uuid(to_id)).ok();
 
         let session = self.retrieve_session().await.unwrap();
         match session.execute(&statement).wait() {
@@ -169,16 +186,21 @@ impl MessageRepository {
 
     fn bind_to_message(row: Row) -> Option<Message> {
         let msg_id: cassandra_cpp::Uuid = Result::ok( row.get(0) ).unwrap();
-        let user_id: cassandra_cpp::Uuid = Result::ok( row.get(1) ).unwrap();
+        let from_id: cassandra_cpp::Uuid = Result::ok( row.get(1) ).unwrap();
+        let to_id: cassandra_cpp::Uuid = Result::ok( row.get(3) ).unwrap();
         Some(
             Message {
                 id: Utils::from_cass_uuid_to_uuid(msg_id),
-                user: User {
-                    id: Utils::from_cass_uuid_to_uuid(user_id),
+                from: User {
+                    id: Utils::from_cass_uuid_to_uuid(from_id),
                     name: Result::ok( row.get(2) ).unwrap(),
                 },
-                body: Result::ok( row.get(3) ).unwrap(),
-                created_at: Utils::from_timestamp_to_datetime( Result::ok( row.get(4) ).unwrap() )
+                to: User {
+                    id: Utils::from_cass_uuid_to_uuid(to_id),
+                    name: Result::ok( row.get(4) ).unwrap(),
+                },
+                room_id: Result::ok( row.get(5) ).unwrap(),
+                body: Result::ok( row.get(6) ).unwrap(),
             }
         )
     }

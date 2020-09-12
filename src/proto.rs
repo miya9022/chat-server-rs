@@ -13,7 +13,7 @@ pub enum Input {
   LoadRooms(LoadRoomsInput),
 
   #[serde(rename = "load-room")]
-  LoadRoom,
+  LoadRoom(LoadRoomInput),
 
   #[serde(rename = "create-room")]
   CreateRoom(RoomInput),
@@ -32,6 +32,12 @@ pub enum Input {
 #[serde(rename_all = "camelCase")]
 pub struct LoadRoomsInput {
   pub user_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadRoomInput {
+  pub from_id: Uuid,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -211,7 +217,7 @@ pub struct MessageOutput {
   pub id: Uuid,
   pub user: UserOutput,
   pub body: String,
-  pub created_at: DateTime<Utc>,
+  // pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -297,12 +303,11 @@ impl UserOutput {
 }
 
 impl MessageOutput {
-  pub fn new(id: Uuid, user: UserOutput, body: &str, created_at: DateTime<Utc>) -> Self {
+  pub fn new(id: Uuid, user: UserOutput, body: &str) -> Self {
     MessageOutput {
       id,
       user,
       body: String::from(body),
-      created_at,
     }
   }
 }

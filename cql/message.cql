@@ -1,10 +1,14 @@
 CREATE TABLE IF NOT EXISTS chat_app.message (
-    id UUID,
-    user_id UUID,
-    user_name varchar,
-    room_id varchar,
+    id TIMEUUID,
+
+    from_id UUID,
+    from_name VARCHAR,
+
+    to_id UUID,
+    to_name VARCHAR,
+
+    room_id VARCHAR,
     body text,
-    create_at bigint,
-    PRIMARY KEY ( id, create_at )
+    PRIMARY KEY ((from_id, to_id), id )
 )
-WITH CLUSTERING ORDER BY (create_at ASC);
+WITH CLUSTERING ORDER BY (id DESC);

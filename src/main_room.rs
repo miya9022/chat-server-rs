@@ -1,7 +1,6 @@
 use chat_server::server::RoomServer;
 use chat_server::cass::server_node::ServerNode;
 use chat_server::domain::repository::{RepositoryFactory, RepoKind};
-use cassandra_cpp::Cluster;
 
 #[tokio::main]
 async fn main() {

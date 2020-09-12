@@ -22,9 +22,13 @@ impl Repository for RoomUserRepository {
 }
 
 impl RoomUserRepository {
-    const INSERT_QUERY: &'static str = "INSERT INTO chat_app.room_users (room_id, user_id, room_title, create_at) VALUES(?, ?, ?, ?)";
+    const INSERT_QUERY: &'static str = "INSERT INTO \
+    chat_app.room_users (room_id, user_id, username, room_title, create_at) \
+    VALUES(?, ?, ?, ?, ?)";
 
-    const SELECT_BY_USER: &'static str = "SELECT room_id, user_id, room_title, create_at FROM chat_app.room_users WHERE user_id = ? ALLOW FILTERING";
+    const SELECT_BY_USER: &'static str = "SELECT room_id, user_id, username, room_title, create_at FROM chat_app.room_users WHERE user_id = ? ALLOW FILTERING";
+
+    const SELECT_ALL_BY_ROOM: &'static str = "SELECT room_id, user_id, username, room_title, create_at FROM chat_app.room_users WHERE room_id = ?";
 
     const DELETE_QUERY: &'static str = "DELETE FROM chat_app.room_users WHERE room_id = ? AND user_id = ?";
 
@@ -35,8 +39,9 @@ impl RoomUserRepository {
 
         statement.bind_string(0, input.room_id.as_str()).ok();
         statement.bind_uuid(1, Utils::from_uuid_to_cass_uuid(input.user_id)).ok();
-        statement.bind_string(2, input.room_id.as_str()).ok();
-        statement.bind_int64(3, Utc::now().timestamp()).ok();
+        statement.bind_string(2, input.username.as_str()).ok();
+        statement.bind_string(3, input.room_title.as_str()).ok();
+        statement.bind_int64(4, Utc::now().timestamp()).ok();
 
         let session = self.retrieve_session().await.unwrap();
         let result = session.execute(&statement).wait();
@@ -86,6 +91,26 @@ impl RoomUserRepository {
         Some(res)
     }
 
+    pub async fn load_by_room(&self, room_id: String) -> Option<Vec<RoomUser>> {
+        let mut res = Vec::<RoomUser>::new();
+        let mut statement = stmt!(Self::SELECT_ALL_BY_ROOM);
+        statement.bind_string(0, room_id.as_str()).ok();
+
+        let session = self.retrieve_session().await.unwrap();
+        match session.execute(&statement).wait().ok() {
+            None => None,
+            Some(result) => {
+                for row in result.iter() {
+                    match Self::bind_to_roomuser(row) {
+                        None => continue,
+                        Some(room_user) => res.push(room_user),
+                    }
+                }
+                Some(res)
+            }
+        }
+    }
+
     pub async fn delete_room_user(&self, room_id: String, user_id: Uuid) -> Result<()> {
         let mut statement = stmt!(Self::DELETE_QUERY);
         statement.bind_string(0, room_id.as_str()).ok();
@@ -123,8 +148,11 @@ impl RoomUserRepository {
             RoomUser {
                 room_id: Result::ok(row.get(0)).unwrap(),
                 user_id: Utils::from_cass_uuid_to_uuid(user_id),
-                room_title: Result::ok(row.get(2)).unwrap(),
-                create_at: Utils::from_timestamp_to_datetime(Result::ok(row.get(3)).unwrap()),
+                username: Result::ok( row.get(2)).unwrap(),
+                room_title: Result::ok(row.get(3)).unwrap(),
+                create_at: Utils::from_timestamp_to_datetime(
+                    Result::ok(row.get(4)).unwrap()
+                ),
             }
         )
     }

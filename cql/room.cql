@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS chat_app.room (
     host_id UUID,
     host_name varchar,
     participants set<text>,
+    scope varchar,
     create_at bigint,
     delete_key varchar,
 );

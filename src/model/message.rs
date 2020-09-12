@@ -1,22 +1,25 @@
 use crate::model::user::User;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct Message {
   pub id: Uuid,
-  pub user: User,
+
+  pub from: User,
+  pub to: User,
+
+  pub room_id: String,
   pub body: String,
-  pub created_at: DateTime<Utc>,
 }
 
 impl Message {
-  pub fn new(id: Uuid, user: User, body: &str, created_at: DateTime<Utc>) -> Self {
+  pub fn new(from: User, to: User, room_id: &str, body: &str) -> Self {
     Message {
-      id,
-      user,
+      id: Uuid::default(),
+      from,
+      to,
+      room_id: String::from(room_id),
       body: String::from(body),
-      created_at,
     }
   }
 }
