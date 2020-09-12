@@ -199,7 +199,7 @@ impl RoomStorage {
       });
 
     let room = Room::new(room_id.clone(), input.room_title, input.host_id, input.host_name.clone(),
-                         users.clone(), Utc::now(), input.delete_key);
+                         users.clone(), Utc::now(), input.scope, input.delete_key);
     self.rooms.write().await.insert(room_id.clone(), Arc::new(room.clone()));
 
     // create Hub
