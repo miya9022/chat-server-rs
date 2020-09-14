@@ -60,7 +60,7 @@ impl UserServer {
                 .expect("failed to install Ctrl+C signal handler");
         };
 
-        let (_, serving) = warp::serve(user).bind_with_graceful_shutdown(([127, 0, 0, 1], self.port), shutdown);
+        let (_, serving) = warp::serve(user).bind_with_graceful_shutdown(([0, 0, 0, 0], self.port), shutdown);
         let running_storage = self.user_storage.run(input_receiver);
 
         tokio::select! {
@@ -138,7 +138,7 @@ impl RoomServer {
         .expect("failed to install Ctrl+C signal handler");
     };
 
-    let (_, serving) = warp::serve(storage).bind_with_graceful_shutdown(([127, 0, 0, 1], self.port), shutdown);
+    let (_, serving) = warp::serve(storage).bind_with_graceful_shutdown(([0, 0, 0, 0], self.port), shutdown);
     let running_storage = self.room_storage.run(input_receiver);
 
     tokio::select! {
