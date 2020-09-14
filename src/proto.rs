@@ -218,7 +218,7 @@ pub struct MessageOutput {
   pub id: Uuid,
   pub user: UserOutput,
   pub body: String,
-  // pub created_at: DateTime<Utc>,
+  pub create_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -304,11 +304,12 @@ impl UserOutput {
 }
 
 impl MessageOutput {
-  pub fn new(id: Uuid, user: UserOutput, body: &str) -> Self {
+  pub fn new(id: Uuid, user: UserOutput, body: &str, create_at: i64) -> Self {
     MessageOutput {
       id,
       user,
       body: String::from(body),
+      create_at
     }
   }
 }

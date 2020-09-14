@@ -211,6 +211,7 @@ impl Hub {
               name: msg.from.name
             },
             body: msg.body,
+            create_at: msg.create_at
           }
         })
         .collect();
@@ -285,7 +286,7 @@ impl Hub {
           message.id,
           UserOutput::new(message.from.id, &message.from.name),
           &message.body,
-          // message.created_at,
+          message.create_at,
         )
       })
       .collect();
@@ -325,24 +326,22 @@ impl Hub {
     }
 
     // Add new message to feed
-    if let Some(to_user) = self.load_room_user_except(room_id, client_id).await {
-      let message = Message::new(
-        user.clone(), User::new(to_user.user_id, to_user.username.as_str()), room_id, &input.body);
-      self.feed.write().await.add_message(message.clone());
+    let message = Message::new(
+      user.clone(), room_id, &input.body);
+    self.feed.write().await.add_message(message.clone());
 
-      // report send message success
-      let message_output = MessageOutput::new(
-        message.id, UserOutput::new(user.id, &user.name), &message.body
-      );
+    // report send message success
+    let message_output = MessageOutput::new(
+      message.id, UserOutput::new(user.id, &user.name), &message.body, message.create_at
+    );
 
-      // report post status
-      self.send_targeted(room_id, client_id, Output::Posted(PostedOutput::new(message_output.clone())));
+    // report post status
+    self.send_targeted(room_id, client_id, Output::Posted(PostedOutput::new(message_output.clone())));
 
-      // notify everyone about new message
-      // self.send_ignored(room_id, client_id, Output::UserPosted(UserPostedOutput::new(message_output))).await;
+    // notify everyone about new message
+    // self.send_ignored(room_id, client_id, Output::UserPosted(UserPostedOutput::new(message_output))).await;
 
-      // serve message
-      self.msg_repo.add_new_message(room_id, message).await;
-    }
+    // serve message
+    self.msg_repo.add_new_message(room_id, message).await;
   }
 }

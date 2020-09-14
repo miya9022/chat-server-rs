@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 use crate::model::user::User;
 use crate::model::message::Message;
 use crate::domain::repository::{Repository, Utils};
+use chrono::Utc;
 
 pub struct MessageRepository {
     pub(crate) cluster: Mutex<Cluster>
@@ -22,44 +23,39 @@ impl Repository for MessageRepository {
 
 impl MessageRepository {
     const INSERT_QUERY: &'static str = "INSERT INTO chat_app.message \
-    (id, from_id, from_name, to_id, to_name, room_id, body) \
+    (id, from_id, from_name, room_id, body) \
     VALUES \
-    (now(), ?, ?, ?, ?, ?, ?)";
+    (now(), ?, ?, ?, ?)";
 
     const UPDATE_BODY_QUERY: &'static str = "UPDATE chat_app.message SET body = ? WHERE \
       id = ? AND \
-      from_id = ? AND \
-      to_id = ?";
+      from_id = ?";
 
     const SELECT_ALL_BY_ROOM_ID_QUERY: &'static str = "\
-    SELECT id, from_id, from_name, to_id, to_name, room_id, body \
-    FROM chat_app.message \
-    WHERE from_id = ? \
-      AND to_id = ? \
-      AND room_id = ? \
+    SELECT id, from_id, from_name, room_id, body, totimestamp(id) as create_at FROM chat_app.message
+    WHERE
+      from_id IN ( ?, ? )
+      AND room_id = ?
+    ORDER BY id DESC
     ALLOW FILTERING";
 
     const SELECT_ONE_QUERY: &'static str = "\
-    SELECT id, from_id, from_name, to_id, to_name, room_id, body \
-    FROM chat_app.message \
+    SELECT id, from_id, from_name, room_id, body, totimestamp(id) as create_at FROM chat_app.message \
     WHERE id = ? ALLOW FILTERING";
 
     const SELECT_EXIST_QUERY: &'static str = "SELECT COUNT(*) FROM chat_app.message WHERE id = ? ALLOW FILTERING";
 
     const DELETE_QUERY: &'static str = "DELETE FROM chat_app.message WHERE \
       id = ? AND \
-      from_id = ? AND \
-      to_id = ?";
+      from_id = ?";
 
     pub async fn add_new_message(&self, room_id: &str, message: Message) -> Option<Message> {
         let persistent_msg = message.clone();
         let mut statement = stmt!(Self::INSERT_QUERY);
         statement.bind_uuid(0, Utils::from_uuid_to_cass_uuid(persistent_msg.from.id)).ok();
         statement.bind_string(1, persistent_msg.from.name.as_str()).ok();
-        statement.bind_uuid(2, Utils::from_uuid_to_cass_uuid(persistent_msg.to.id)).ok();
-        statement.bind_string(3, persistent_msg.to.name.as_str()).ok();
-        statement.bind_string(4, room_id).ok();
-        statement.bind_string(5, persistent_msg.body.as_str()).ok();
+        statement.bind_string(2, room_id).ok();
+        statement.bind_string(3, persistent_msg.body.as_str()).ok();
 
         let session = self.retrieve_session().await.unwrap();
         let result = session.execute(&statement).wait();
@@ -72,7 +68,7 @@ impl MessageRepository {
         }
     }
 
-    pub async fn update_message_body(&self, msg_id: Uuid, from_id: Uuid, to_id: Uuid, body: &str) -> Option<Message> {
+    pub async fn update_message_body(&self, msg_id: Uuid, from_id: Uuid, body: &str) -> Option<Message> {
         if !self.check_message_exists(msg_id).await {
             println!("message doesn't exists");
             return None;
@@ -82,7 +78,6 @@ impl MessageRepository {
         statement.bind_string(0, body).ok();
         statement.bind_uuid(1, Utils::from_uuid_to_cass_uuid(msg_id)).ok();
         statement.bind_uuid(2, Utils::from_uuid_to_cass_uuid(from_id)).ok();
-        statement.bind_uuid(3, Utils::from_uuid_to_cass_uuid(to_id)).ok();
 
         let session = self.retrieve_session().await.unwrap();
         match session.execute(&statement).wait() {
@@ -162,18 +157,17 @@ impl MessageRepository {
                     .first_row().unwrap()
                     .get_column(0).unwrap()
                     .get_i64().unwrap()
-                    > 0
+                > 0
             }
             Err(_) => false
         }
     }
 
-    pub async fn delete_message(&self, msg_id: Uuid, from_id: Uuid, to_id: Uuid) -> Result<()> {
+    pub async fn delete_message(&self, msg_id: Uuid, from_id: Uuid) -> Result<()> {
         let msg_id = Utils::from_uuid_to_cass_uuid(msg_id);
         let mut statement = stmt!(Self::DELETE_QUERY);
         statement.bind_uuid(0, msg_id).ok();
         statement.bind_uuid(1, Utils::from_uuid_to_cass_uuid(from_id)).ok();
-        statement.bind_uuid(2, Utils::from_uuid_to_cass_uuid(to_id)).ok();
 
         let session = self.retrieve_session().await.unwrap();
         match session.execute(&statement).wait() {
@@ -187,7 +181,12 @@ impl MessageRepository {
     fn bind_to_message(row: Row) -> Option<Message> {
         let msg_id: cassandra_cpp::Uuid = Result::ok( row.get(0) ).unwrap();
         let from_id: cassandra_cpp::Uuid = Result::ok( row.get(1) ).unwrap();
-        let to_id: cassandra_cpp::Uuid = Result::ok( row.get(3) ).unwrap();
+
+        let create_at: i64 = match row.get(5) {
+            Ok(data) => data,
+            Err(_) => Utc::now().timestamp()
+        };
+
         Some(
             Message {
                 id: Utils::from_cass_uuid_to_uuid(msg_id),
@@ -195,12 +194,9 @@ impl MessageRepository {
                     id: Utils::from_cass_uuid_to_uuid(from_id),
                     name: Result::ok( row.get(2) ).unwrap(),
                 },
-                to: User {
-                    id: Utils::from_cass_uuid_to_uuid(to_id),
-                    name: Result::ok( row.get(4) ).unwrap(),
-                },
-                room_id: Result::ok( row.get(5) ).unwrap(),
-                body: Result::ok( row.get(6) ).unwrap(),
+                room_id: Result::ok( row.get(3) ).unwrap(),
+                body: Result::ok( row.get(4) ).unwrap(),
+                create_at
             }
         )
     }

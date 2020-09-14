@@ -17,9 +17,9 @@ impl Room {
   pub fn new(
     room_id: String,
     room_title: String,
-    host_id: Uuid, 
-    host_name: String, 
-    participants: Option<Vec<User>>, 
+    host_id: Uuid,
+    host_name: String,
+    participants: Option<Vec<User>>,
     create_at: DateTime<Utc>,
     scope: String,
     delete_key: String,
